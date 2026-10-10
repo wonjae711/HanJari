@@ -1,0 +1,19 @@
+{
+  "github": {
+    "repository": "wonjae711/HanJari",
+    "url": "https://github.com/wonjae711/HanJari",
+    "base_branch": "main",
+    "pull_request_mode": "draft",
+    "auto_merge": false
+  },
+  "notion": {
+    "database_id": "9f239dfc-79d3-4d96-95b7-9a593d23b6e2",
+    "data_source_id": "c13d3bd7-64b7-4d84-b907-506a54f5ef10",
+    "database_url": "https://app.notion.com/p/9f239dfc79d34d9695b79a593d23b6e2",
+    "sync_mode": "connector-manual",
+    "tasks": {
+      "HJ-001": "3f5d0420-a262-81c2-80b9-d349ca4596e5"
+    }
+  },
+  "notifications": {"codex_connected": false}
+}

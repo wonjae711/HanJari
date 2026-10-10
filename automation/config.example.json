@@ -1,0 +1,11 @@
+{
+  "project_dir": "C:/path/to/HanJari",
+  "base_branch": "main",
+  "claude_command": "claude",
+  "codex_command": "codex",
+  "codex_home": "C:/Users/YOUR_USER/.codex",
+  "usage_file": "C:/Users/YOUR_USER/.claude/usage.json",
+  "usage_max_age_seconds": 300,
+  "step_timeout_seconds": 1800,
+  "claude_allowed_tools": []
+}

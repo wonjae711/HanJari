@@ -1,0 +1,19 @@
+# Local execution state and credentials
+automation/config.json
+automation/.runtime*/
+**/__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+*.log
+
+# Java build output and local IDE settings
+target/
+build/
+.gradle/
+.idea/
+*.iml
+
+# Local agent settings
+.claude/settings.local.json

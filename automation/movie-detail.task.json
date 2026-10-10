@@ -1,0 +1,17 @@
+{
+  "title": "영화 상세 조회 API",
+  "task_id": "HJ-001",
+  "notion_page": "https://app.notion.com/p/3f5d0420a26281c280b9d349ca4596e5",
+  "repository": "https://github.com/wonjae711/HanJari",
+  "requirements": "등록된 영화의 상세 정보를 조회한다. 개발 전 automation/HJ-001-plan.md의 API 계약과 테스트 기준을 읽고 따른다. 기획안은 아직 사용자 승인 전이다.",
+  "planning_document": "automation/HJ-001-plan.md",
+  "proposed_stack": {"java": "17", "spring_boot": "4.1.1", "maven": "3.9.11", "database": "MySQL InnoDB; initial local server 8.0.40"},
+  "acceptance_criteria": [
+    "등록된 영화 ID는 제목, 상영시간, 관람등급을 반환한다.",
+    "존재하지 않는 ID는 404와 정의된 오류 형식을 반환한다.",
+    "잘못된 ID 형식은 400을 반환한다.",
+    "정상 및 실패 사례의 자동 테스트 실행 근거를 남긴다."
+  ],
+  "excluded": ["회원 인증", "영화 등록/수정 화면", "부하 테스트", "병합", "배포"],
+  "status": "기획안 v1 검토 대기 — 사용자 기획 승인 필요"
+}
