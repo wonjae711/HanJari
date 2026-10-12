@@ -150,6 +150,19 @@ Claude를 재검증하려면 동일하게 `python smoke_cli.py claude --activate
 
 Windows elevated 초기화가 런타임 파일 잠금으로 실패한 PC에서는 로컬 config.json에 `"codex_windows_sandbox": "unelevated"`를 지정할 수 있다. 이 값은 Codex 자식 호출에만 적용되며 read-only 정책을 유지한다. 생략하면 기존 Codex 설정을 사용한다. 실제 파일 읽기와 독립 리뷰 재개를 확인했다.
 
-현재는 HJ-001 전용 최종 검증이다. 일반 실행기의 `final_test`와 자동 연결되지 않으며, 개발 단계의 부분 리포트 판정도 별도 보완이 필요하다. Notion 자동 동기화와 외부 알림 연동은 여전히 미완료다.
+현재 검증 정책은 HJ-001 전용이다. 일반 run/resume도 final_test에서 Maven verify → 최신 전체 리포트·소스 불변 확인 → Codex 판정을 수행한다. 구현 단계도 같은 필수 클래스 정책을 사용한다. 다른 업무의 live implement/final_test는 검증 정책을 정의하기 전 중단한다. Windows 알림과 Notion 직접 동기화 어댑터를 구현했다. 실제 Notion 연결은 토큰 설정 후 검증해야 한다. [설정 안내](INTEGRATIONS.md)를 참고한다.
 
 반복 실행 한도, 명시적 중단 해제, 완료 상태를 보존하는 재검증은 [반복 방지 안내](REPEAT-GUARD.md)를 참고한다. HJ-001은 재검증까지 완료되어 현재 사용자 리뷰 대기 상태다.
+
+
+## 일반 실행 흐름의 검증 연결
+
+- `controller.py run/resume --activate`에서 HJ-001은 review 통과 후 결정된 Maven 검증 경로로 자동 연결된다. test DB 환경변수는 실행 전에 준비해야 하며, 누락 시 final_test에서 멈춘다. 완료된 pilot/recheck 상태는 초기화하지 않는다.
+- Claude 구현 결과의 pass는 필수 클래스 네 개의 최신 XML, 최소 테스트 수, 실패·오류·건너뜀 0을 요구한다. malformed/누락 속성/일부 리포트만 있는 경우 거부한다. 이 단계의 XML 검사는 Maven 종료 코드나 테스트 이후 소스 변경까지 증명하지 않는다. 최종 실행기가 Maven을 직접 실행해 종료 코드와 소스 불변을 추가 확인한다.
+- 최종 실행 오류는 비활성 final_test로 정지한다. Codex가 changes를 반환하면 일반 실행기는 기존 수정 3회·관리 재계획 정책을 따른다. final-check.ps1 전용 재검증 경로는 한 단계 후 정지한다.
+- 회귀 테스트 38개 통과(외부 LLM·DB 모의 처리 포함). 이 연결 변경에 대한 실제 LLM/DB 재실행은 하지 않았다.
+
+
+## Windows 알림·Notion 직접 동기화
+
+추가 LLM 호출이나 주기 확인 없이 수동 활성화된 작업의 상태 변경을 기록한다. 로컬 config.json의 integration_delivery=true와 integrations.json의 provider/sync_mode로 켠다. 전송 실패는 업무 결과와 분리하고 전송만 제한적으로 재시도한다. 실제 배너 표시와 Notion 토큰·페이지 권한은 별도 연결 시험이 필요하다. [설정과 복구 절차](INTEGRATIONS.md)를 따른다.

@@ -49,4 +49,4 @@ powershell -NoProfile -File .\automation\test-mysql.ps1
 
 [기획 계약](automation/HJ-001-plan.md), [검증 기록과 파일 읽는 순서](automation/HJ-001-validation.md)를 참고한다. 테스트 리포트는 `target/surefire-reports`, `target/failsafe-reports`에 생성된다.
 
-초기 권한 문제 복구 후 Claude의 구현·테스트와 Codex 리뷰가 통과했다. 2026-10-12에는 최종 검증 실행기의 Maven 35개 테스트와 Codex 판정이 다시 통과했다. 완전 자동 실행, Notion 자동 동기화, Codex 알림 연결은 아직 완료되지 않았다. Draft PR 이후 병합은 사람이 판단한다.
+초기 권한 문제 복구 후 Claude의 구현·테스트와 Codex 리뷰가 통과했다. 2026-10-12에는 최종 검증 실행기의 Maven 35개 테스트와 Codex 판정이 다시 통과했다. 일반 제어기의 최종 검증 연결과 Windows 알림·Notion 직접 동기화 어댑터를 추가했다. Windows 알림 센터 도착을 확인했으며 배너 표시와 실제 Notion 토큰 연결은 추가 확인이 필요하다. Codex 앱 푸시는 사용하지 않는다. Draft PR 이후 병합은 사람이 판단한다.

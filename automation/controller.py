@@ -14,6 +14,7 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 import run_guard
+import outbox
 
 ROOT = Path(__file__).resolve().parent
 SCHEMA = {
@@ -71,6 +72,7 @@ class Store:
             state = read(self.path)
             fn(state)
             state["updated_at"] = now()
+            outbox.enqueue(state, state["updated_at"])
             save(self.path, state)
             return state
 
@@ -167,6 +169,7 @@ def executable(value):
 
 def child_environment(config):
     env = os.environ.copy()
+    env.pop("HANJARI_NOTION_TOKEN", None)  # Integration credential never reaches agents.
     # Point to the existing subscription configuration; never create/copy auth files.
     if config.get("codex_home"):
         env["CODEX_HOME"] = str(Path(config["codex_home"]).resolve())
@@ -176,7 +179,7 @@ def prompt_for(s):
     instructions = {
         "plan": "기능 하나의 요구사항, 제외 범위, 검증 가능한 완료 기준과 구현 계획을 작성하라. 코드를 수정하지 마라.",
         "spec_review": "기획의 모호함과 누락을 독립적으로 검토하라. 현재 범위의 검증 사례와 후속 기능 제안을 구분하라. 코드를 수정하지 마라.",
-        "implement": "승인된 기능을 구현하고 단위/통합 테스트를 실행하라. 수정 요청이 있으면 일괄 반영하라. 테스트 명령과 결과를 근거에 남겨라. MySQL 통합 테스트용 환경변수(HANJARI_TEST_DB_URL/USERNAME/PASSWORD)는 이 실행을 시작한 사용자 PowerShell 세션에 이미 설정되어 있다. 이 변수들의 존재 여부를 별도로 확인하려 하지 말고, `.\\mvnw.cmd -B verify`를 바로 실행하라. verify 결과(failsafe 리포트)가 그 변수들이 실제로 설정되어 있었는지 알려주는 증거다.",
+        "implement": "승인된 기능을 구현하고 단위/통합 테스트를 실행하라. 수정 요청이 있으면 일괄 반영하라. 테스트 명령과 결과를 근거에 남겨라. MySQL 통합 테스트용 환경변수는 실행 전 준비되어야 한다. 설정 여부를 단정하지 마라. 이 변수들의 존재 여부를 별도로 확인하려 하지 말고, `.\\mvnw.cmd -B verify`를 바로 실행하라. verify 결과(failsafe 리포트)가 그 변수들이 실제로 설정되어 있었는지 알려주는 증거다.",
         "review": "실제 변경 코드를 독립적으로 리뷰하라. 결함은 changes, 진행 불가능은 blocked로 보고하라. 파일과 행, 원인, 수정 요구를 명시하라. 코드를 수정하지 마라.",
         "final_test": "요구사항별 실제 기능 검증을 수행하라. 실행 환경이 없으면 blocked를 반환하라. 부하 테스트는 실행하지 마라. 코드는 수정하지 마라.",
         "manager": "수정 3회 후 실패 원인을 증거로 분석하고 재계획하라. 완료 기준을 낮추지 마라. 사용자 결정이 필요하면 blocked를 반환하라. 코드를 수정하지 마라.",
@@ -209,28 +212,18 @@ def classify_denials(denials):
     return essential, auxiliary
 
 def fresh_test_evidence(repo, since):
-    """target/surefire-reports, target/failsafe-reports 아래 XML 리포트 중
-    since 이후에 새로 생성되고 실패/오류 0건인 테스트 결과가 하나라도 있으면 True.
-    기존(이전 실행) 리포트만 있거나 전혀 없으면 False — 자가 보고 pass를 믿지 않는다."""
-    repo = Path(repo)
-    found_passing = False
-    for pattern in ("target/surefire-reports/TEST-*.xml", "target/failsafe-reports/TEST-*.xml"):
-        for report in repo.glob(pattern):
-            try:
-                if report.stat().st_mtime < since:
-                    continue
-                root = ET.parse(report).getroot()
-                tests = int(root.get("tests", 0))
-                failures = int(root.get("failures", 0))
-                errors = int(root.get("errors", 0))
-            except (OSError, ET.ParseError, TypeError, ValueError):
-                continue
-            if tests <= 0:
-                continue
-            if failures or errors:
-                return False  # 새로 생성된 리포트에 실패가 있음 — pass로 간주하지 않는다
-            found_passing = True
-    return found_passing
+    """Require all HJ-001 suites, fresh reports, and no failures or skips.
+
+    This is an implementation-stage report gate. The deterministic final runner
+    additionally verifies the Maven exit code and source stability.
+    """
+    from verification_evidence import check_reports
+    try:
+        check_reports(Path(repo), since)
+    except (OSError, ET.ParseError, KeyError, TypeError, ValueError):
+        return False
+    return True
+
 
 def evaluate_claude_envelope(envelope, agent, repo, started_at, attempt_dir):
     """Claude 실행 결과를 검증한다. 거부 기록보다 디스크의 실제 증거를 우선한다 —
@@ -258,12 +251,12 @@ def evaluate_claude_envelope(envelope, agent, repo, started_at, attempt_dir):
         elif essential:
             commands = "; ".join((d.get("tool_input") or {}).get("command", "") for d in essential)
             raise RuntimeError(
-                f"필수 테스트 명령이 권한 거부로 실행되지 못했고, 새로 생성된 테스트 리포트 증거도 없습니다: {commands}"
+                f"필수 테스트 명령이 권한 거부로 실행되지 못했고, 필수 전체 테스트의 최신 성공 증거도 없습니다: {commands}"
             )
         else:
             raise RuntimeError(
                 "Claude가 outcome=pass를 보고했지만 이번 실행에서 새로 생성된 테스트 리포트 증거를 "
-                "target/surefire-reports 또는 target/failsafe-reports에서 찾지 못했습니다. "
+                "필수 클래스 전체에서 확인하지 못했습니다(누락·오래된 결과·실패·건너뜀 확인 필요). "
                 "테스트가 실제로 실행되지 않았을 수 있어 자가 보고만으로는 다음 단계로 넘기지 않습니다."
             )
     elif denials:
@@ -329,7 +322,25 @@ def invoke(config, s, directory):
         return evaluate_claude_envelope(envelope, agent, repo, started_at, directory)
     return read(output)
 
-def run(store, config, runner=invoke):
+def execute_stage(config, state, directory):
+    if state['mode'] == 'live' and state['stage'] in ('implement', 'final_test'):
+        if state['task'].get('task_id') != 'HJ-001':
+            raise ValueError('검증 정책은 현재 HJ-001 전용입니다. 새 업무의 검증 정책을 먼저 정의하세요.')
+        if state['stage'] == 'final_test':
+            from final_verify import verify_then_assess
+            return verify_then_assess(config, state, directory)
+    return invoke(config, state, directory)
+
+
+def deliver_events(store, config):
+    if config.get('integration_delivery'):
+        from delivery import best_effort
+        best_effort(store, config)
+
+
+def run(store, config, runner=None):
+    if runner is None:
+        runner = execute_stage
     run_guard.limits(config)
     with ExitStack() as locks:
         # Protect different state directories that target the same checkout too.
@@ -347,6 +358,7 @@ def run(store, config, runner=invoke):
                     s["running"] = {"id": uuid.uuid4().hex, "stage": s["stage"], "revision": s["revision"]}
                     selected.update(json.loads(json.dumps(s)))
             claimed = store.update(claim)
+            deliver_events(store, config)
             if not selected:
                 if claimed.get('run_guard', {}).get('latched'):
                     print('[중단] ' + claimed['run_guard']['reason'], flush=True)
@@ -373,6 +385,7 @@ def run(store, config, runner=invoke):
                     event(s, "attention", str(exc))
                     run_guard.record(s, selected, 'error', config, event)
                 store.update(fail)
+                deliver_events(store, config)
                 raise
 
 def main():
@@ -448,6 +461,8 @@ def main():
                 s["active"] = True
                 event(s, "activation", "사용자 수동 활성화")
         store.update(control)
+        if args.command not in ("run", "resume"):
+            deliver_events(store, read(args.config))
         if args.command in ("run", "resume"):
             try:
                 run(store, read(args.config))

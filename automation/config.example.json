@@ -7,5 +7,6 @@
   "usage_file": "C:/Users/YOUR_USER/.claude/usage.json",
   "usage_max_age_seconds": 300,
   "step_timeout_seconds": 1800,
-  "claude_allowed_tools": []
+  "claude_allowed_tools": [],
+  "integration_delivery": true
 }

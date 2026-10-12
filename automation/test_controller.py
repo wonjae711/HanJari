@@ -153,6 +153,14 @@ class WorkflowTests(unittest.TestCase):
         )
         return path
 
+    def _all_reports(self, repo):
+        from verification_evidence import EXPECTED
+        for folder, suites in EXPECTED.items():
+            for name, count in suites.items():
+                path = Path(repo) / 'target' / folder / ('TEST-' + name + '.xml')
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f'<testsuite name="{name}" tests="{count}" failures="0" errors="0" skipped="0"/>')
+
     def test_auxiliary_denial_with_fresh_passing_report_still_passes(self):
         # 핵심 테스트 명령은 성공했고, 거부된 건 참고용 보조 명령(cat 등)뿐인 경우:
         # 결과는 그대로 통과해야 하고, 거부 내역은 별도 경고 파일로 남아야 한다.
@@ -160,7 +168,7 @@ class WorkflowTests(unittest.TestCase):
         repo.mkdir()
         started_at = time.time()
         time.sleep(0.02)
-        self._surefire_report(repo)  # since 이후에 생성된 새 리포트, 실패 0건
+        self._all_reports(repo)  # 필수 전체 클래스의 최신 성공 결과
 
         attempt = Path(self.tmp.name) / "attempt"
         envelope = {
@@ -182,7 +190,7 @@ class WorkflowTests(unittest.TestCase):
         repo.mkdir()
         started_at = time.time()
         time.sleep(0.02)
-        self._surefire_report(repo)
+        self._all_reports(repo)
 
         attempt = Path(self.tmp.name) / "attempt"
         envelope = {
