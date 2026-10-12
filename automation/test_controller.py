@@ -140,5 +140,125 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(s["stage"], "pr_ready")
         self.assertFalse(s["active"])
 
+
+    # -- 권한 거부 분류 + 테스트 증거 검증 (controller.evaluate_claude_envelope) --
+
+    def _surefire_report(self, repo, tests=3, failures=0, errors=0, name="TEST-Example.xml"):
+        reports = Path(repo) / "target" / "surefire-reports"
+        reports.mkdir(parents=True, exist_ok=True)
+        path = reports / name
+        path.write_text(
+            f'<testsuite tests="{tests}" failures="{failures}" errors="{errors}"></testsuite>',
+            encoding="utf-8",
+        )
+        return path
+
+    def test_auxiliary_denial_with_fresh_passing_report_still_passes(self):
+        # 핵심 테스트 명령은 성공했고, 거부된 건 참고용 보조 명령(cat 등)뿐인 경우:
+        # 결과는 그대로 통과해야 하고, 거부 내역은 별도 경고 파일로 남아야 한다.
+        repo = Path(self.tmp.name) / "repo"
+        repo.mkdir()
+        started_at = time.time()
+        time.sleep(0.02)
+        self._surefire_report(repo)  # since 이후에 생성된 새 리포트, 실패 0건
+
+        attempt = Path(self.tmp.name) / "attempt"
+        envelope = {
+            "is_error": False,
+            "permission_denials": [
+                {"tool_name": "Bash", "tool_input": {"command": "cat pom.xml README.md"}},
+            ],
+            "structured_output": result("pass"),
+        }
+        out = c.evaluate_claude_envelope(envelope, "claude", repo, started_at, attempt)
+        self.assertEqual(out["outcome"], "pass")
+        self.assertTrue((attempt / "denials.json").exists())
+
+    def test_essential_denial_recovered_by_later_retry_still_passes(self):
+        # 실제로 겪은 상황: 파이프(| Select-String) 붙은 mvnw 호출은 거부됐지만,
+        # Claude가 같은 세션에서 일반 명령으로 재시도해 실제로 통과했다.
+        # 거부 기록만 보고 막지 말고, 새로 생성된 리포트 증거를 우선해야 한다.
+        repo = Path(self.tmp.name) / "repo"
+        repo.mkdir()
+        started_at = time.time()
+        time.sleep(0.02)
+        self._surefire_report(repo)
+
+        attempt = Path(self.tmp.name) / "attempt"
+        envelope = {
+            "is_error": False,
+            "permission_denials": [
+                {"tool_name": "PowerShell", "tool_input": {
+                    "command": ".\\mvnw.cmd -B verify 2>&1 | Select-String -Pattern 'Tests run:' | Select-Object -Last 25"
+                }},
+            ],
+            "structured_output": result("pass"),
+        }
+        out = c.evaluate_claude_envelope(envelope, "claude", repo, started_at, attempt)
+        self.assertEqual(out["outcome"], "pass")
+        self.assertTrue((attempt / "denials.json").exists())
+
+    def test_essential_denial_blocks_even_if_agent_claims_pass(self):
+        # mvnw 명령 자체가 거부되어 테스트가 실행되지 못한 경우: 에이전트가 pass라고
+        # 주장해도 신뢰하지 않고 즉시 실패해야 한다.
+        repo = Path(self.tmp.name) / "repo"
+        repo.mkdir()
+        envelope = {
+            "is_error": False,
+            "permission_denials": [
+                {"tool_name": "PowerShell", "tool_input": {"command": ".\\mvnw.cmd -B verify"}},
+            ],
+            "structured_output": result("pass"),
+        }
+        with self.assertRaises(RuntimeError):
+            c.evaluate_claude_envelope(envelope, "claude", repo, time.time(), Path(self.tmp.name) / "attempt")
+
+    def test_pass_without_fresh_test_evidence_is_rejected(self):
+        # 권한 거부는 전혀 없지만, 테스트가 실제로 돌았다는 새 리포트 증거가 없는데
+        # outcome=pass만 돌아온 경우(예: 에이전트의 잘못된 자가 보고, 또는 이전 실행의
+        # 낡은 리포트만 존재): 자가 보고만으로 통과시키지 않는다.
+        repo = Path(self.tmp.name) / "repo"
+        repo.mkdir()
+        self._surefire_report(repo)  # 낡은(stale) 리포트: 아래 since보다 먼저 생성됨
+        time.sleep(0.02)
+        since = time.time()  # 리포트보다 나중 시각 -> 리포트가 "새로 생성됨"으로 인정되지 않음
+
+        envelope = {
+            "is_error": False,
+            "permission_denials": [],
+            "structured_output": result("pass"),
+        }
+        with self.assertRaises(RuntimeError):
+            c.evaluate_claude_envelope(envelope, "claude", repo, since, Path(self.tmp.name) / "attempt")
+
+    def test_pass_with_fresh_but_failing_report_is_rejected(self):
+        # 새로 생성된 리포트가 있어도 그 안에 실패/오류가 있으면 pass로 인정하지 않는다.
+        repo = Path(self.tmp.name) / "repo"
+        repo.mkdir()
+        started_at = time.time()
+        time.sleep(0.02)
+        self._surefire_report(repo, tests=5, failures=1, errors=0)
+
+        envelope = {
+            "is_error": False,
+            "permission_denials": [],
+            "structured_output": result("pass"),
+        }
+        with self.assertRaises(RuntimeError):
+            c.evaluate_claude_envelope(envelope, "claude", repo, started_at, Path(self.tmp.name) / "attempt")
+
+    def test_non_claude_agent_skips_report_evidence_check(self):
+        # codex(review 등) 결과는 mvnw 테스트 리포트 증거 검사를 적용하지 않는다 —
+        # 해당 단계는 애초에 테스트를 직접 실행하지 않기 때문.
+        repo = Path(self.tmp.name) / "repo"
+        repo.mkdir()
+        envelope = {
+            "is_error": False,
+            "permission_denials": [],
+            "structured_output": result("pass"),
+        }
+        out = c.evaluate_claude_envelope(envelope, "codex", repo, time.time(), Path(self.tmp.name) / "attempt")
+        self.assertEqual(out["outcome"], "pass")
+
 if __name__ == "__main__":
     unittest.main()

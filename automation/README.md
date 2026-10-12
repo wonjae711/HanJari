@@ -141,3 +141,15 @@ python smoke_cli.py codex --activate
 실패하면 같은 폴더의 stderr.log를 확인합니다. 인증 파일이나 토큰을 공유하지 마세요.
 Claude를 재검증하려면 동일하게 `python smoke_cli.py claude --activate`를 사용합니다.
 사용량 파일이 오래됐다면 Claude 호출을 보류합니다. 이 시험은 statusline 갱신 기능을 검증하지 않습니다.
+
+## HJ-001 최종 검증 경로
+
+기존 작업이 비활성 `final_test` 단계일 때 프로젝트 루트에서 `powershell -NoProfile -File .\automation\final-check.ps1`을 실행한다. 테스트 계정 비밀번호를 숨김 입력받고, 정해진 Maven verify를 실행한 뒤 Codex가 새 검증 근거를 읽기 전용으로 판정한다. 성공 시 `pr_ready`에서 멈춘다. 이미 완료된 상태를 초기화하거나 재실행하지 않는다.
+
+`final_verify.py`는 필수 클래스 4개, 새 리포트, 실패·오류·건너뜀 0, 종료 코드 0, 소스 불변을 확인한다. 검증 근거는 해당 attempt의 verification.json이다. DB 환경변수는 Codex 자식 호출 전에 제외한다.
+
+Windows elevated 초기화가 런타임 파일 잠금으로 실패한 PC에서는 로컬 config.json에 `"codex_windows_sandbox": "unelevated"`를 지정할 수 있다. 이 값은 Codex 자식 호출에만 적용되며 read-only 정책을 유지한다. 생략하면 기존 Codex 설정을 사용한다. 실제 파일 읽기와 독립 리뷰 재개를 확인했다.
+
+현재는 HJ-001 전용 최종 검증이다. 일반 실행기의 `final_test`와 자동 연결되지 않으며, 개발 단계의 부분 리포트 판정도 별도 보완이 필요하다. Notion 자동 동기화와 외부 알림 연동은 여전히 미완료다.
+
+반복 실행 한도, 명시적 중단 해제, 완료 상태를 보존하는 재검증은 [반복 방지 안내](REPEAT-GUARD.md)를 참고한다. HJ-001은 재검증까지 완료되어 현재 사용자 리뷰 대기 상태다.
