@@ -25,7 +25,7 @@ cd C:\Users\dnjsw\projects\HanJari
 powershell -NoProfile -File .\automation\set-notion-token.ps1
 ```
 
-토큰은 현재 Windows 사용자의 DPAPI로 암호화되어 automation/.runtime-delivery/notion-token.dpapi에 저장되며 Git에서 제외된다. 환경변수 HANJARI_NOTION_TOKEN을 직접 설정한 경우 그 값이 우선한다. DPAPI는 같은 사용자로 실행되는 모든 프로그램에 대한 격리 수단은 아니다. 토큰은 AI/Maven 자식 프로세스 환경에서 제외하며 요청/오류 로그에 출력하지 않는다. read-notion-token.ps1은 Python 내부용이므로 직접 실행하지 않는다.
+토큰은 현재 Windows 사용자의 DPAPI로 암호화되어 automation/.runtime-delivery/notion-token.dpapi에 저장되며 Git에서 제외된다. 환경변수 HANJARI_NOTION_TOKEN을 직접 설정한 경우 그 값이 우선한다. DPAPI는 같은 사용자로 실행되는 모든 프로그램에 대한 격리 수단은 아니다. 토큰은 AI/Maven 자식 프로세스 환경에서 제외하며 요청/오류 로그에 출력하지 않는다. Python은 Windows DPAPI로 암호화 파일을 직접 복호화한다. 기존 read-notion-token.ps1은 더 이상 호출하지 않으며 직접 실행하지 않는다.
 
 ## 연결 시험 (개발·테스트·LLM 재실행 없음)
 
@@ -50,13 +50,17 @@ retry는 작업을 활성화하거나 즉시 전송하지 않는다. notificatio
 
 ## 검증 범위
 
-자동 테스트는 전송 모의 처리로 상태 저장, 최신 상태 합치기, 중복 확인, 세 번 실패 제한, 업무 상태 불변, 요구사항 버전·사람의 완료 상태 보호를 확인한다. 실제 Windows 배너는 사용자 확인이 필요하다. 실제 Notion API 왕복은 토큰 설정 후 확인해야 한다.
+자동 테스트는 전송 모의 처리로 상태 저장, 최신 상태 합치기, 중복 확인, 세 번 실패 제한, 업무 상태 불변, 요구사항 버전·사람의 완료 상태 보호를 확인한다. 실제 Windows 배너는 사용자 확인이 필요하다. 2026-10-12 사용자 실행의 Notion 전송 성공 기록과 커넥터로 조회한 실제 페이지 상태를 확인했다.
 
 
 ## 이 PC 연결 시험 결과
 
 - 2026-10-12: 기존 작업 표시줄 풍선 방식은 배너를 확인하지 못해 native toast로 교체했다.
-- Windows PowerShell 시작 앱 ID를 사용하며 알림 센터 기록을 확인한다. 사용자가 알림 센터에서 시험 알림을 확인했다. 화면 배너는 아직 확인되지 않았다.
+- Windows PowerShell 시작 앱 ID를 사용하며 알림 센터 기록을 확인한다. 사용자가 알림 센터에서 시험 알림을 확인했다. 이후 사용자가 화면 배너와 알림 센터 모두 표시됨을 확인했다.
 - 배너가 필요하면 Windows 설정 → 시스템 → 알림 → Windows PowerShell에서 알림 배너 표시를 확인한다. 방해 금지를 유지하려면 우선 순위 알림에 Windows PowerShell을 허용할 수 있다. 프로그램은 이 설정을 변경하지 않는다.
 - 같은 태그의 최신 한자리 알림으로 알림 센터 항목을 교체하며, 상세 과거 이벤트는 state.json의 outbox에 남는다.
-- 제어기 회귀 테스트 53개 통과. 실제 Notion 토큰/API 연결 시험은 미실행이다.
+- 제어기 회귀 테스트 53개 통과. 실제 Notion 전송은 1회 성공했다. outbox와 ledger가 같은 이벤트를 sent로 기록했고, 연결된 커넥터에서 HJ-001의 사용자 리뷰 대기·담당 사용자·수정 0·관리 재계획 없음·요구사항 버전 1을 확인했다. 초기에는 Python 자식 PowerShell의 보안 모듈 중복 로드 오류로 복호화에 실패했다. Windows DPAPI 직접 복호화로 수정한 뒤 같은 사용자 환경에서 토큰 인증과 실제 Notion 읽기를 확인했다.
+
+## 기획 문서·프롬프트·AI 활용 기록
+
+knowledge.py가 별도 기록 페이지에 구조화 산출물을 누적한다. 콘텐츠 삽입 권한도 필요하다. 상태 속성 전송과 문서 전송의 영수증은 분리되며, 문서 전송 오류 때문에 모델을 재실행하지 않는다. [프로젝트 자동화 안내](PROJECT-AUTOMATION.md)를 참고한다.

@@ -3,14 +3,18 @@
 Python 3.11 이상, 추가 패키지 없음. 시작 명령을 실행한 동안에만 작동합니다.
 현재 UI는 터미널입니다. 기본 모드는 mock이며 모델 사용량을 소비하지 않습니다.
 
+## 프로젝트 전체 기획 자동화
+
+기능 하나의 기획에 앞서 Notion 원본 → Codex 기획·독립 검토·수정 → 사용자 승인 → 기능별 개발 인계를 지원합니다. 기획 문서·프롬프트·AI 활용 기록도 Notion에 누적합니다. 시작 명령과 제한은 [프로젝트 자동화 안내](PROJECT-AUTOMATION.md)를 따릅니다.
+
 ## 프로젝트 연결 상태
 
 - 원격 저장소: https://github.com/wonjae711/HanJari (사용자 실행으로 origin 등록 완료, 2026-10-10 재확인)
 - Notion 업무 DB: https://app.notion.com/p/9f239dfc79d34d9695b79a593d23b6e2
 - HJ-001 기획 카드: https://app.notion.com/p/3f5d0420a26281c280b9d349ca4596e5
 - 연결 식별자는 integrations.json에 기록합니다. 토큰은 저장하지 않습니다.
-- Notion DB와 카드는 생성됐지만 로컬 프로그램의 자동 동기화는 아직 없습니다. 현재는 대화의 Notion 커넥터로 관리합니다.
-- GitHub는 아직 최초 커밋/푸시 전입니다. 기본 브랜치 커밋과 기능 브랜치가 준비된 뒤 실제 개발을 시작해야 합니다.
+- Notion DB와 카드가 생성됐으며 로컬 프로그램의 진행 상태 직접 동기화까지 확인했습니다. 요구사항 편집은 기획 과정에서 별도로 진행합니다.
+- GitHub 기능 브랜치와 Draft PR #1이 준비됐습니다. 병합은 사용자 판단을 기다립니다.
 - 새 환경에서는 config.example.json을 config.json으로 복사하고 로컬 경로를 지정하세요. 개인 설정은 Git에서 제외됩니다.
 
 초기 제한된 실행 환경에서 .git/config 쓰기가 거부됐으나 사용자 PowerShell에서 해결됐습니다. 새 환경에서는 다음 명령으로 origin을 등록합니다.
@@ -31,16 +35,16 @@ python connect_repository.py
 - 상태 파일의 원자적 저장과 실행 잠금. 프로세스 비정상 종료 시 자동 재실행하지 않습니다.
 - Claude 작업 전 usage.json의 5h 80% / 7d 70% 검사. 파일 갱신 자체는 하지 않습니다.
 - 단계별 입력/출력 로그, 관련 파일 안내를 모은 리뷰 자료 생성.
-- 실제 CLI 어댑터 포함. Claude Pro의 읽기 전용 호출/JSON 응답은 확인했습니다. 전체 개발 흐름은 아직 미검증입니다.
+- 실제 CLI 어댑터 포함. Claude Pro의 읽기 전용 호출/JSON 응답은 확인했습니다. HJ-001의 Claude 구현·테스트와 Codex 리뷰·최종 검증을 확인했습니다. 새 업무의 검증 정책은 별도로 정의해야 합니다.
 
 ## 아직 연결하지 않은 기능
 
-- Notion DB 생성/동기화, GitHub Draft PR 생성/업로드, Codex 앱 알림.
+- 제어기의 GitHub Draft PR 자동 생성/업로드와 Codex 앱 직접 알림은 미구현입니다. Notion DB는 생성됐고 상태 동기화와 Windows 알림은 연결됐습니다.
 - `pr_ready`는 로컬 검증 흐름 종료를 뜻하며 실제 PR이 생겼다는 뜻이 아닙니다.
 - Git 저장소 clone, 브랜치 생성, 커밋/푸시/병합/배포는 자동 수행하지 않습니다.
-- 테스트 근거는 에이전트 보고이며 별도 CI 결과와의 자동 대조는 미구현입니다.
+- HJ-001 최종 검증은 제어기가 Maven을 실행하고 실제 XML과 소스 해시를 확인합니다. 별도 GitHub CI 결과와의 자동 대조는 미구현입니다.
 - 일시정지는 실행 중인 단계를 즉시 중단하지 않습니다. 긴 작업은 설정된 타임아웃에 종료됩니다.
-- 터미널 출력과 state.json의 attention 이벤트만 제공합니다. 이를 Codex 알림이라고 표시하지 않습니다.
+- 터미널·state.json의 이벤트와 Windows 알림을 제공합니다. Codex 앱 알림과는 별도입니다.
 
 ## 모의 실행
 
@@ -89,7 +93,7 @@ python controller.py run --activate
 6. mock 작업과 다른 상태 폴더로 init --mode live를 실행합니다. 이후 run --activate를 실행하면 실제 사용량이 발생합니다.
 
 Codex는 기본 read-only로 실행됩니다. 이 권한으로 테스트가 불가능하면 blocked로 대기하게 설계했습니다.
-실제 테스트 실행 범위는 향후 프로젝트 환경에 맞게 검증 후 조정해야 합니다.
+HJ-001의 Maven 최종 검증은 제어기가 실행하며 Codex는 그 근거를 읽고 판정합니다.
 Claude는 acceptEdits를 사용하되 권한 우회 옵션을 사용하지 않습니다. 권한 거부는 로그와 함께 대기합니다.
 명령 인자는 shell=False로 전달하며 모델과 추론 강도는 사용자 도구의 기존 설정을 사용합니다.
 
@@ -150,7 +154,7 @@ Claude를 재검증하려면 동일하게 `python smoke_cli.py claude --activate
 
 Windows elevated 초기화가 런타임 파일 잠금으로 실패한 PC에서는 로컬 config.json에 `"codex_windows_sandbox": "unelevated"`를 지정할 수 있다. 이 값은 Codex 자식 호출에만 적용되며 read-only 정책을 유지한다. 생략하면 기존 Codex 설정을 사용한다. 실제 파일 읽기와 독립 리뷰 재개를 확인했다.
 
-현재 검증 정책은 HJ-001 전용이다. 일반 run/resume도 final_test에서 Maven verify → 최신 전체 리포트·소스 불변 확인 → Codex 판정을 수행한다. 구현 단계도 같은 필수 클래스 정책을 사용한다. 다른 업무의 live implement/final_test는 검증 정책을 정의하기 전 중단한다. Windows 알림과 Notion 직접 동기화 어댑터를 구현했다. 실제 Notion 연결은 토큰 설정 후 검증해야 한다. [설정 안내](INTEGRATIONS.md)를 참고한다.
+기존 HJ-001 검증 정책과 사용자 승인된 프로젝트에서 인계한 기능별 검증 정책을 지원한다. 일반 run/resume도 final_test에서 Maven verify → 최신 전체 리포트·소스 불변 확인 → Codex 판정을 수행한다. 구현 단계도 같은 필수 클래스 정책을 사용한다. 다른 업무의 live implement/final_test는 프로젝트 승인 근거와 명시적 테스트 정책이 없으면 중단한다. Windows 알림과 Notion 직접 동기화 어댑터를 구현했다. 이 PC에서는 사용자 실행의 Notion 전송 성공 기록과 실제 페이지 상태를 확인했다. [설정 안내](INTEGRATIONS.md)를 참고한다.
 
 반복 실행 한도, 명시적 중단 해제, 완료 상태를 보존하는 재검증은 [반복 방지 안내](REPEAT-GUARD.md)를 참고한다. HJ-001은 재검증까지 완료되어 현재 사용자 리뷰 대기 상태다.
 
@@ -165,4 +169,4 @@ Windows elevated 초기화가 런타임 파일 잠금으로 실패한 PC에서�
 
 ## Windows 알림·Notion 직접 동기화
 
-추가 LLM 호출이나 주기 확인 없이 수동 활성화된 작업의 상태 변경을 기록한다. 로컬 config.json의 integration_delivery=true와 integrations.json의 provider/sync_mode로 켠다. 전송 실패는 업무 결과와 분리하고 전송만 제한적으로 재시도한다. 실제 배너 표시와 Notion 토큰·페이지 권한은 별도 연결 시험이 필요하다. [설정과 복구 절차](INTEGRATIONS.md)를 따른다.
+추가 LLM 호출이나 주기 확인 없이 수동 활성화된 작업의 상태 변경을 기록한다. 로컬 config.json의 integration_delivery=true와 integrations.json의 provider/sync_mode로 켠다. 전송 실패는 업무 결과와 분리하고 전송만 제한적으로 재시도한다. 2026-10-12 이 PC의 배너·알림 센터 표시 및 Notion 상태 반영을 확인했다. 새 사용자나 PC에서는 별도 연결 시험이 필요하다. [설정과 복구 절차](INTEGRATIONS.md)를 따른다.

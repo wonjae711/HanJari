@@ -15,6 +15,7 @@ import uuid
 import xml.etree.ElementTree as ET
 import run_guard
 import outbox
+import project_planning as planning
 
 ROOT = Path(__file__).resolve().parent
 SCHEMA = {
@@ -99,8 +100,10 @@ def usage_gate(path, max_age=300, timestamp=None):
             raise ValueError(f"사용량 기준 도달: {key} {value}% >= {limit}%")
     return data
 
-def validate(result):
-    if not isinstance(result, dict) or set(result) != set(SCHEMA["required"]):
+def validate(result, state=None):
+    project = state is not None and planning.is_project(state)
+    required = set(SCHEMA['required']) | ({'artifact'} if project else set())
+    if not isinstance(result, dict) or set(result) != required:
         raise ValueError("에이전트 응답 형식 불일치")
     if result["outcome"] not in ("pass", "changes", "blocked") or not isinstance(result["summary"], str):
         raise ValueError("잘못된 에이전트 판정")
@@ -109,9 +112,14 @@ def validate(result):
             raise ValueError(f"잘못된 필드: {key}")
     if result["outcome"] == "pass" and not result["evidence"]:
         raise ValueError("근거 없는 통과 판정은 허용하지 않습니다.")
+    if project:
+        planning.validate_result(result, state)
     return result
 
 def transition(s, result):
+    if planning.is_project(s):
+        planning.transition(s, result, event)
+        return
     stage, outcome = s["stage"], result["outcome"]
     if outcome == "blocked":
         s["active"] = False
@@ -176,6 +184,8 @@ def child_environment(config):
     return env
 
 def prompt_for(s):
+    if planning.is_project(s):
+        return planning.prompt(s)
     instructions = {
         "plan": "기능 하나의 요구사항, 제외 범위, 검증 가능한 완료 기준과 구현 계획을 작성하라. 코드를 수정하지 마라.",
         "spec_review": "기획의 모호함과 누락을 독립적으로 검토하라. 현재 범위의 검증 사례와 후속 기능 제안을 구분하라. 코드를 수정하지 마라.",
@@ -211,7 +221,7 @@ def classify_denials(denials):
         bucket.append(d)
     return essential, auxiliary
 
-def fresh_test_evidence(repo, since):
+def fresh_test_evidence(repo, since, expected=None):
     """Require all HJ-001 suites, fresh reports, and no failures or skips.
 
     This is an implementation-stage report gate. The deterministic final runner
@@ -219,13 +229,13 @@ def fresh_test_evidence(repo, since):
     """
     from verification_evidence import check_reports
     try:
-        check_reports(Path(repo), since)
+        check_reports(Path(repo), since, expected)
     except (OSError, ET.ParseError, KeyError, TypeError, ValueError):
         return False
     return True
 
 
-def evaluate_claude_envelope(envelope, agent, repo, started_at, attempt_dir):
+def evaluate_claude_envelope(envelope, agent, repo, started_at, attempt_dir, expected=None):
     """Claude 실행 결과를 검증한다. 거부 기록보다 디스크의 실제 증거를 우선한다 —
     명령이 한 번 거부돼도 같은 세션에서 재시도로 성공했을 수 있기 때문이다.
     - is_error: 즉시 실패.
@@ -245,7 +255,7 @@ def evaluate_claude_envelope(envelope, agent, repo, started_at, attempt_dir):
     if structured is None:
         raise RuntimeError("Claude 응답에 structured_output이 없습니다: 로그 확인 필요")
     if agent in EVIDENCE_REQUIRED_AGENTS and structured.get("outcome") == "pass":
-        if fresh_test_evidence(repo, started_at):
+        if fresh_test_evidence(repo, started_at, expected):
             if denials:
                 print(f"[경고] 실행 중 명령 거부 {len(denials)}건이 있었지만, 이후 재시도로 실제 테스트 리포트 증거를 확인했습니다: {attempt_dir / 'denials.json'}", flush=True)
         elif essential:
@@ -265,6 +275,8 @@ def evaluate_claude_envelope(envelope, agent, repo, started_at, attempt_dir):
 
 def invoke(config, s, directory):
     if s["mode"] == "mock":
+        if planning.is_project(s):
+            return planning.mock_result(s)
         time.sleep(.05)
         return {"outcome": "pass", "summary": "MOCK: " + s["stage"],
                 "evidence": ["모의 결과입니다. 실제 코드/테스트 검증이 아닙니다."], "review_files": []}
@@ -275,14 +287,14 @@ def invoke(config, s, directory):
         raise ValueError("실제 실행에는 별도의 기능 브랜치가 필요합니다.")
     agent = "claude" if s["stage"] == "implement" else "codex"
     # Do not accidentally turn subscription workflows into API-key billing.
-    if any(os.environ.get(k) for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_AUTH_TOKEN")):
+    if any(os.environ.get(k) for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY", "ANTHROPIC_AUTH_TOKEN")):
         raise ValueError("API 인증 환경변수가 설정되어 있습니다. 구독 전용 터미널에서 실행하세요.")
     if agent == "claude":
         usage_gate(config["usage_file"], config["usage_max_age_seconds"])
     binary = executable(config[agent + "_command"])
     output = directory / "result.json"
     schema = directory / "schema.json"
-    save(schema, SCHEMA)
+    save(schema, planning.schema(SCHEMA) if planning.is_project(s) else SCHEMA)
     if agent == "claude":
         args = [binary, "-p", "--output-format", "json", "--json-schema", json.dumps(SCHEMA),
                 "--permission-mode", "acceptEdits", "--permission-prompts", "none", "--no-session-persistence"]
@@ -302,9 +314,12 @@ def invoke(config, s, directory):
     prompt = prompt_for(s)
     (directory / "prompt.txt").write_text(prompt, encoding="utf-8")
     started_at = time.time()
+    child_env = child_environment(config)
+    if agent == 'codex':
+        child_env = {k: v for k, v in child_env.items() if not k.startswith('HANJARI_')}
     with (directory / "stdout.log").open("w", encoding="utf-8") as stdout, (directory / "stderr.log").open("w", encoding="utf-8") as stderr:
         proc = subprocess.Popen(args, cwd=repo, stdin=subprocess.PIPE, stdout=stdout, stderr=stderr,
-                                text=True, encoding="utf-8", shell=False, env=child_environment(config),
+                                text=True, encoding="utf-8", shell=False, env=child_env,
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         try:
             proc.communicate(prompt, timeout=config["step_timeout_seconds"])
@@ -319,13 +334,17 @@ def invoke(config, s, directory):
         raise RuntimeError(f"{agent} 종료 코드 {proc.returncode}; 로그: {directory}")
     if agent == "claude":
         envelope = read(directory / "stdout.log")
-        return evaluate_claude_envelope(envelope, agent, repo, started_at, directory)
+        from verification_evidence import task_policy
+        return evaluate_claude_envelope(envelope, agent, repo, started_at, directory, task_policy(s['task']))
     return read(output)
 
 def execute_stage(config, state, directory):
     if state['mode'] == 'live' and state['stage'] in ('implement', 'final_test'):
-        if state['task'].get('task_id') != 'HJ-001':
-            raise ValueError('검증 정책은 현재 HJ-001 전용입니다. 새 업무의 검증 정책을 먼저 정의하세요.')
+        from verification_evidence import task_policy
+        task_policy(state['task'])
+        if state['task'].get('kind') == 'planned_feature':
+            from project import verify_handoff
+            verify_handoff(state)
         if state['stage'] == 'final_test':
             from final_verify import verify_then_assess
             return verify_then_assess(config, state, directory)
@@ -336,6 +355,8 @@ def deliver_events(store, config):
     if config.get('integration_delivery'):
         from delivery import best_effort
         best_effort(store, config)
+        from knowledge import best_effort as publish_knowledge
+        publish_knowledge(store)
 
 
 def run(store, config, runner=None):
@@ -346,6 +367,11 @@ def run(store, config, runner=None):
         # Protect different state directories that target the same checkout too.
         if config.get("project_dir"):
             locks.enter_context(lock(Path(config["project_dir"]).resolve() / "automation" / ".runtime-locks" / "runner.lock", timeout=0))
+        initial = read(store.path)
+        if planning.is_project(initial):
+            locks.enter_context(lock(store.directory / 'project.lock', timeout=0))
+        elif initial.get('project_handoff'):
+            locks.enter_context(lock(Path(initial['project_handoff']['state_path']).parent / 'project.lock', timeout=0))
         locks.enter_context(lock(store.directory / "runner.lock", timeout=0))
         while True:
             selected = {}
@@ -355,7 +381,7 @@ def run(store, config, runner=None):
                 if s["active"] and s["stage"] in STEPS:
                     if not run_guard.claim(s, config, event):
                         return
-                    s["running"] = {"id": uuid.uuid4().hex, "stage": s["stage"], "revision": s["revision"]}
+                    s["running"] = {"id": uuid.uuid4().hex, "stage": s["stage"], "revision": s["revision"], "started_at": now()}
                     selected.update(json.loads(json.dumps(s)))
             claimed = store.update(claim)
             deliver_events(store, config)
@@ -365,8 +391,9 @@ def run(store, config, runner=None):
                 return
             attempt = store.directory / "attempts" / selected["running"]["id"]
             attempt.mkdir(parents=True)
+            print(f"Starting {selected['stage']} / revision {selected['revision']} / attempt {selected['run_guard']['attempts']}", flush=True)
             try:
-                result = validate(runner(config, selected, attempt))
+                result = validate(runner(config, selected, attempt), selected)
                 save(attempt / "validated-result.json", result)
                 def finish(s):
                     s["running"] = None
@@ -374,10 +401,13 @@ def run(store, config, runner=None):
                         s["active"] = False
                         event(s, "attention", "요구사항 버전이 변경되어 결과를 채택하지 않았습니다.")
                         return
-                    s["results"].append({"stage": selected["stage"], "revision": s["revision"], "attempt": str(attempt), **result})
+                    s["results"].append({"stage": selected["stage"], "revision": s["revision"], "attempt": str(attempt),
+                                         "started_at": selected['running']['started_at'], "finished_at": now(), **result})
                     transition(s, result)
                     run_guard.record(s, selected, result['outcome'], config, event)
                 state = store.update(finish)
+                if planning.is_project(state):
+                    planning.export_artifacts(store, state)
                 print(f"{selected['stage']} -> {state['stage']} ({result['outcome']})", flush=True)
             except Exception as exc:
                 def fail(s):
@@ -435,6 +465,8 @@ def main():
                     raise ValueError("--text 필요")
                 event(s, "idea", args.text)
             elif args.command == "revise":
+                if planning.is_project(s):
+                    raise ValueError('Use project.py revise to refresh source and invalidate approval')
                 if s["running"]:
                     raise ValueError("먼저 pause하고 현재 단계 종료를 기다리세요.")
                 if not args.task:
@@ -445,6 +477,8 @@ def main():
                 s.update(task=task, title=task["title"], revision=s["revision"]+1, stage="plan", active=False, repairs=0, manager_used=False)
                 event(s, "revision", "요구사항 변경. 기존 검증은 이 버전에 적용되지 않습니다.")
             elif args.command == "approve-plan":
+                if planning.is_project(s):
+                    raise ValueError('Use project.py approve --hash to approve a reviewed project plan')
                 if s["stage"] != "awaiting_plan_approval" or s["running"]:
                     raise ValueError("기획 승인 대기 상태가 아닙니다.")
                 s["stage"] = "implement"

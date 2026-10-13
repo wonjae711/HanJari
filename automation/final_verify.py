@@ -6,7 +6,7 @@ import subprocess
 import time
 import controller as c
 
-from verification_evidence import EXPECTED, source_manifest, check_reports
+from verification_evidence import EXPECTED, source_manifest, check_reports, task_policy
 
 
 def verify_then_assess(config, state, directory):
@@ -38,7 +38,7 @@ def verify_then_assess(config, state, directory):
             raise
     if code != 0:
         raise ValueError(f'Maven verify failed ({code}); inspect {directory / "maven.log"}')
-    suites = check_reports(repo, started)
+    suites = check_reports(repo, started, task_policy(state['task']))
     if source_manifest(repo) != before:
         raise ValueError('Source changed during verification; result rejected')
     proof = {'command': 'mvnw.cmd -B verify', 'exit_code': code, 'started_at_epoch': started,

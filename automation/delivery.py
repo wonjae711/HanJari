@@ -59,22 +59,54 @@ def notion_token():
         return token
     if os.name != 'nt' or not (ROOT / '.runtime-delivery/notion-token.dpapi').exists():
         raise NotConfigured('Notion token is not configured')
-    result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive',
-                             '-WindowStyle', 'Hidden', '-File', str(ROOT / 'read-notion-token.ps1')],
-                            capture_output=True, timeout=10,
-                            creationflags=subprocess.CREATE_NO_WINDOW)
-    if result.returncode:
-        raise NotConfigured('Cannot decrypt token for this Windows user')
-    token = result.stdout.decode('utf-8').strip()
+    try:
+        token = unprotect_token(ROOT / '.runtime-delivery/notion-token.dpapi')
+    except Exception:
+        raise NotConfigured('Cannot decrypt token for this Windows user') from None
     if not token:
         raise NotConfigured('Empty token')
     return token
 
+def unprotect_token(path):
+    """Read ConvertFrom-SecureString's Windows DPAPI hex format directly.
+
+    Avoid child PowerShell module initialization; DPAPI still enforces the same
+    Windows user/machine boundary. No token is written to subprocess stdout.
+    """
+    import ctypes
+    from ctypes import wintypes
+    class Blob(ctypes.Structure):
+        _fields_ = [('size', wintypes.DWORD), ('data', ctypes.c_void_p)]
+    encrypted = bytes.fromhex(path.read_text(encoding='ascii').strip())
+    buffer = ctypes.create_string_buffer(encrypted)
+    source = Blob(len(encrypted), ctypes.cast(buffer, ctypes.c_void_p))
+    target = Blob()
+    crypt = ctypes.WinDLL('crypt32', use_last_error=True)
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    crypt.CryptUnprotectData.argtypes = [ctypes.POINTER(Blob), ctypes.c_void_p, ctypes.c_void_p,
+                                         ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
+    crypt.CryptUnprotectData.restype = wintypes.BOOL
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel.LocalFree.restype = ctypes.c_void_p
+    if not crypt.CryptUnprotectData(ctypes.byref(source), None, None, None, None, 1, ctypes.byref(target)):
+        raise OSError('Windows DPAPI decryption failed')
+    try:
+        return ctypes.string_at(target.data, target.size).decode('utf-16-le').strip()
+    finally:
+        ctypes.memset(target.data, 0, target.size)
+        kernel.LocalFree(target.data)
+
 def send_notion(item, integrations):
     settings = integrations.get('notion', {})
     page_id = settings.get('tasks', {}).get(item['snapshot']['task_id'])
-    if settings.get('sync_mode') != 'direct-api' or not page_id:
+    if settings.get('sync_mode') != 'direct-api':
         raise NotConfigured('Notion token or task mapping missing')
+    if not page_id:
+        journal = settings.get('knowledge_pages', {}).get('activity')
+        if not journal: raise NotConfigured('Notion task mapping or activity journal missing')
+        from knowledge import append_record
+        append_record(journal, item['id'], 'Workflow status\n' + json.dumps(item['snapshot'], ensure_ascii=False, indent=2))
+        return
     token = notion_token()
     current = notion_request(page_id, token)
     props = current['properties']

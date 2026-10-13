@@ -13,12 +13,19 @@
     "sync_mode": "direct-api",
     "tasks": {
       "HJ-001": "3f5d0420-a262-81c2-80b9-d349ca4596e5"
+    },
+    "knowledge_hub": "3f8d0420-a262-81e5-a9f1-c653ea8c29b8",
+    "knowledge_pages": {
+      "plans": "3f8d0420-a262-8139-b1fa-c09ae31359ca",
+      "workflow": "3f8d0420-a262-819f-a5af-dd722aaf70b0",
+      "prompts": "3f8d0420-a262-8118-993e-f7250f5c6c8c",
+      "activity": "3f8d0420-a262-8187-b909-cd7fc3bba055"
     }
   },
   "notifications": {
     "codex_connected": false,
     "provider": "windows",
     "windows_center_verified": true,
-    "banner_verified": false
+    "banner_verified": true
   }
 }

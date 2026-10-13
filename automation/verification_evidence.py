@@ -1,5 +1,6 @@
 """HJ-001 source manifest and required Maven report policy."""
 import hashlib
+import re
 import xml.etree.ElementTree as ET
 
 EXPECTED = {
@@ -13,9 +14,27 @@ def source_manifest(repo):
     return {p.relative_to(repo).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted(paths) if p.is_file()}
 
-def check_reports(repo, since):
+def task_policy(task):
+    if task.get('task_id') == 'HJ-001':
+        return EXPECTED
+    policy = task.get('verification_policy', {})
+    required = policy.get('required_suites')
+    if task.get('kind') != 'planned_feature' or policy.get('runner') != 'maven_verify' or not isinstance(required, dict) or set(required) != set(EXPECTED):
+        raise ValueError('Task requires an approved Maven verification policy')
+    for folder, suites in required.items():
+        if not isinstance(suites, dict) or not suites:
+            raise ValueError('Missing required test suites')
+        for name, minimum in suites.items():
+            if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*(?:Test|IT)', name) or type(minimum) is not int or minimum < 1:
+                raise ValueError('Invalid suite policy')
+        if any(suites.get(name, 0) < minimum for name, minimum in EXPECTED[folder].items()):
+            raise ValueError('Pilot regression policy may not be reduced')
+    return required
+
+def check_reports(repo, since, expected=None):
+    expected = EXPECTED if expected is None else expected
     summaries = []
-    for folder, required in EXPECTED.items():
+    for folder, required in expected.items():
         found = set()
         for report in (repo / 'target' / folder).glob('TEST-*.xml'):
             if report.stat().st_mtime < since:

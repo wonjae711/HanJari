@@ -49,4 +49,8 @@ powershell -NoProfile -File .\automation\test-mysql.ps1
 
 [기획 계약](automation/HJ-001-plan.md), [검증 기록과 파일 읽는 순서](automation/HJ-001-validation.md)를 참고한다. 테스트 리포트는 `target/surefire-reports`, `target/failsafe-reports`에 생성된다.
 
-초기 권한 문제 복구 후 Claude의 구현·테스트와 Codex 리뷰가 통과했다. 2026-10-12에는 최종 검증 실행기의 Maven 35개 테스트와 Codex 판정이 다시 통과했다. 일반 제어기의 최종 검증 연결과 Windows 알림·Notion 직접 동기화 어댑터를 추가했다. Windows 알림 센터 도착을 확인했으며 배너 표시와 실제 Notion 토큰 연결은 추가 확인이 필요하다. Codex 앱 푸시는 사용하지 않는다. Draft PR 이후 병합은 사람이 판단한다.
+초기 권한 문제 복구 후 Claude의 구현·테스트와 Codex 리뷰가 통과했다. 2026-10-12에는 최종 검증 실행기의 Maven 35개 테스트와 Codex 판정이 다시 통과했다. 일반 제어기의 최종 검증 연결과 Windows 알림·Notion 직접 동기화 어댑터를 추가했다. Windows 배너·알림 센터는 사용자 확인을 마쳤고, Notion 직접 전송 성공 기록과 실제 업무 페이지의 반영 상태를 확인했다. Codex 앱 푸시는 사용하지 않는다. Draft PR 이후 병합은 사람이 판단한다.
+
+## 프로젝트 기획 자동화
+
+[프로젝트 자동화 안내](automation/PROJECT-AUTOMATION.md)의 시작 명령으로 Notion 원본을 읽고 Codex 기획·독립 검토·수정 루프를 실행합니다. 검토 후 사용자 승인을 기다리며, 승인된 기능만 Claude 개발 경로로 인계합니다. 기획·역할 프롬프트·AI 활용 기록은 [Notion 자동화 기록](https://app.notion.com/p/3f8d0420a26281e5a9f1c653ea8c29b8)에 누적합니다.
