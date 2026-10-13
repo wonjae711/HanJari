@@ -54,16 +54,19 @@ def validate_shape(value, spec):
     elif kind == 'integer' and (type(value) is not int or not 1 <= value <= 10000):
         raise ValueError('Invalid minimum test count')
 
-def validate_features(features):
+def validate_features(features, task=None):
     from verification_evidence import EXPECTED
     seen = set()
-    baseline = {n for suites in EXPECTED.values() for n in suites}
+    context = (task or {}).get('project_context', {})
+    baseline = {n for suites in context.get('baseline', EXPECTED).values() for n in suites}
+    prefix = context.get('prefix', 'HJ')
+    first = context.get('first_feature', 2)
     if not features or len(features) > 30:
         raise ValueError('Plan needs 1..30 ordered features')
     for feature in features:
         key = feature['task_id']
-        if not re.fullmatch(r'HJ-[0-9]{3,5}', key) or key == 'HJ-001' or key in seen:
-            raise ValueError('Feature IDs must be unique HJ numbers, excluding pilot HJ-001')
+        if not re.fullmatch(re.escape(prefix) + r'-[0-9]{3,5}', key) or int(key.split('-')[1]) < first or key in seen:
+            raise ValueError('Feature ID violates the registered project prefix/range')
         if not set(feature['depends_on']) <= seen:
             raise ValueError('Dependencies must refer to earlier features; cycles are prohibited')
         if not feature['title'].strip() or not feature['requirements'].strip() or not feature['acceptance_criteria']:
@@ -78,13 +81,14 @@ def validate_features(features):
                     raise ValueError('New feature needs distinct test suite names')
                 names.add(name)
         seen.add(key)
+        baseline.update(names)
 
 def validate_result(result, state):
     validate_shape(result['artifact'], ARTIFACT)
     a = result['artifact']
     if state['stage'] == 'plan' and result['outcome'] == 'pass':
         if not a['document'].strip(): raise ValueError('Empty planning document')
-        validate_features(a['features'])
+        validate_features(a['features'], state['task'])
     if state['stage'] == 'spec_review' and result['outcome'] == 'pass':
         if a['findings'] or a['questions']:
             raise ValueError('Reviewer cannot pass unresolved findings/questions')
@@ -153,7 +157,7 @@ def mock_result(state):
     artifact = dict(document='', decisions=[], questions=[], findings=[], features=[])
     if state['stage'] == 'plan':
         artifact.update(document='# MOCK plan\nNot a real planning result.', features=[{
-            'task_id': 'HJ-002', 'title': 'MOCK member feature', 'requirements': 'MOCK only',
+            'task_id': state['task'].get('project_context', {}).get('prefix', 'HJ') + '-' + str(state['task'].get('project_context', {}).get('first_feature', 2)).zfill(3), 'title': 'MOCK member feature', 'requirements': 'MOCK only',
             'acceptance_criteria': ['MOCK scenario'], 'excluded': ['live execution'], 'depends_on': [],
             'unit_suites': [{'name': 'MemberTest', 'minimum_tests': 1}],
             'integration_suites': [{'name': 'MemberIT', 'minimum_tests': 1}]}])
@@ -180,7 +184,7 @@ def export_artifacts(store, state):
 
 def feature_task(state, feature):
     from verification_evidence import EXPECTED
-    required = copy.deepcopy(EXPECTED)
+    required = copy.deepcopy(state['task'].get('project_context', {}).get('baseline', EXPECTED))
     # Retain all earlier feature suites as regression requirements.
     for item in candidate(state)['features']:
         for source, folder in (('unit_suites', 'surefire-reports'), ('integration_suites', 'failsafe-reports')):
@@ -192,4 +196,5 @@ def feature_task(state, feature):
             'excluded': feature['excluded'], 'depends_on': feature['depends_on'],
             'approved_design': candidate(state)['document'],
             'planning_origin': {'state_id': state['id'], 'revision': state['revision'], 'hash': plan_hash(state)},
-            'verification_policy': {'runner': 'maven_verify', 'required_suites': required}}
+            'verification_policy': {'runner': 'maven_verify', 'required_suites': required},
+            **({'project_context': copy.deepcopy(state['task']['project_context'])} if 'project_context' in state['task'] else {})}

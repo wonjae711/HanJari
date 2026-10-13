@@ -16,11 +16,12 @@ def verify_then_assess(config, state, directory):
     branch = subprocess.check_output(['git', 'branch', '--show-current'], cwd=repo, text=True).strip()
     if not branch or branch in ('main', 'master', config.get('base_branch', 'main')):
         raise ValueError('A feature branch is required')
-    for name in ('HANJARI_TEST_DB_URL', 'HANJARI_TEST_DB_USERNAME', 'HANJARI_TEST_DB_PASSWORD'):
+    for name in config.get('test_db_env', ('HANJARI_TEST_DB_URL', 'HANJARI_TEST_DB_USERNAME', 'HANJARI_TEST_DB_PASSWORD')):
         if not os.environ.get(name):
             raise ValueError('Missing environment variable: ' + name)
     before = source_manifest(repo)
-    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip()
+    head = subprocess.run(['git', 'rev-parse', '--verify', 'HEAD'], cwd=repo, text=True, capture_output=True)
+    commit = head.stdout.strip() if head.returncode == 0 else None
     started = time.time()
     with (directory / 'maven.log').open('w', encoding='utf-8') as log:
         proc = subprocess.Popen([str(repo / 'mvnw.cmd'), '-B', 'verify'], cwd=repo,
@@ -53,7 +54,7 @@ def verify_then_assess(config, state, directory):
         'file': str(directory / 'verification.json'),
         'instructions': 'The controller just executed Maven verify for this final_test attempt. Read verification.json and actual source/test files, map all acceptance criteria to those tests, and assess whether the fresh execution satisfies them. Do not rerun Maven in your read-only sandbox. Do not read environment values or raw XML properties. Do not claim you personally executed tests or tested a running HTTP server. Return blocked/changes if evidence is insufficient. No code or state edits.'}
     # Database credentials are needed by Maven, not by the read-only reviewer.
-    private = {k: os.environ.pop(k) for k in list(os.environ) if k.startswith('HANJARI_')}
+    private = {k: os.environ.pop(k) for k in list(os.environ) if k.startswith('HANJARI_') or k in config.get('test_db_env', [])}
     try:
         result = c.invoke(config, state, directory)
     finally:

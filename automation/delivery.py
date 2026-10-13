@@ -137,7 +137,8 @@ def send_notification(item, integrations):
     else:
         message = '작업이 중단되었거나 사용자 판단이 필요합니다. 상태와 로그를 확인하세요.'
     env = {k: v for k, v in os.environ.items() if not k.startswith('HANJARI_')}
-    env['HANJARI_NOTICE_TITLE'] = 'HanJari - ' + view['task_id'][:50]
+    env['HANJARI_NOTICE_TITLE'] = integrations.get('project_title', 'HanJari') + ' - ' + view['task_id'][:50]
+    env['HANJARI_NOTICE_TAG'] = __import__('hashlib').sha256(integrations.get('project_id', 'hanjari').encode()).hexdigest()[:16]
     env['HANJARI_NOTICE_TEXT'] = message
     # Fixed script path; text is passed as data, never interpolated into commands.
     script = ROOT / 'notify-windows.ps1'
@@ -206,8 +207,8 @@ def best_effort(store, config):
     if not config.get('integration_delivery'):
         return
     try:
-        integrations = c.read(ROOT / 'integrations.json')
-        for outcome in flush(store, integrations):
+        integrations = config.get('integrations') or c.read(ROOT / 'integrations.json')
+        for outcome in flush(store, integrations, config.get('delivery_root')):
             print('[delivery] ' + outcome, flush=True)
     except Exception:
         print('[delivery] deferred; inspect outbox and delivery lock. Workflow result preserved.', flush=True)

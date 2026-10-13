@@ -1,5 +1,7 @@
 # HanJari 로컬 제어 프로그램 — 첫 버전
 
+현재 권장 진입점은 `python automation/workspace.py run --project hanjari --activate`입니다(저장소 루트 기준). 아이디어 → 기획·독립 검토 → 사용자 승인 → 기능별 개발·검증 → 사용자 코드 리뷰로 이어집니다. 다른 프로젝트 등록, 중간 개입, 기록 위치와 지원 제한은 [통합 운영 안내](MULTIPROJECT.md)를 참고하세요. `workspace.py`는 기본 live이며 `--activate` 없이는 실행하지 않습니다. 아래의 기본 mock 설명은 기존 `controller.py`에 해당합니다.
+
 Python 3.11 이상, 추가 패키지 없음. 시작 명령을 실행한 동안에만 작동합니다.
 현재 UI는 터미널입니다. 기본 모드는 mock이며 모델 사용량을 소비하지 않습니다.
 

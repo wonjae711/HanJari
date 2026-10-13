@@ -25,13 +25,22 @@ def exclusive_project(fn):
             return fn(store, *args, **kwargs)
     return wrapped
 
-def initialize(store, mode, source=None):
+def initialize(store, mode, source=None, profile=None):
     if store.path.exists(): return
-    source = source if source is not None else knowledge.snapshot(SOURCE_PAGE)
+    if profile:
+        from project_profiles import context
+        source = source if source is not None else (knowledge.snapshot(profile['source_page']) if profile.get('source_page') else {
+            'text': profile['idea'], 'sha256': p.digest(profile['idea']), 'kind': 'local_idea'})
+    else:
+        source = source if source is not None else knowledge.snapshot(SOURCE_PAGE)
     task = {'kind': 'project_plan', 'task_id': 'HJ-PLAN', 'title': '한자리 MVP 전체 기획',
             'requirements': '기획자와 독립 검토자가 전체 기획과 작은 개발 업무들을 작성한다.',
             'confirmed_constraints': CONFIRMED, 'source_snapshot': source,
             'acceptance_criteria': ['모든 확정 요구 추적', '검증 가능한 기능별 기준', '독립 검토 후 사용자 승인']}
+    if profile:
+        task.update(task_id=profile['prefix'] + '-PLAN', title=profile['title'] + ' 전체 기획',
+                    requirements=profile['idea'], confirmed_constraints=profile.get('constraints', []),
+                    project_context=context(profile))
     with c.lock(store.directory / 'state.lock'):
         if store.path.exists(): return
         c.save(store.path, c.new_state(task, mode))
@@ -39,6 +48,7 @@ def initialize(store, mode, source=None):
 def source_unchanged(state):
     if state['mode'] == 'mock': return
     source = state['task']['source_snapshot']
+    if source.get('kind') == 'local_idea': return
     fresh = knowledge.snapshot(source['page_id'])
     if fresh['sha256'] != source['sha256']:
         raise ValueError('Notion source changed. Use project.py revise --text to start a new revision.')
@@ -46,6 +56,8 @@ def source_unchanged(state):
 @exclusive_project
 def approve(store, expected_hash, config):
     initial = c.read(store.path)
+    from project_profiles import check_binding
+    check_binding(initial, config)
     source_unchanged(initial)
     def commit(s):
         if s['active'] or s['running'] or s['stage'] != 'awaiting_plan_approval':
@@ -78,7 +90,8 @@ def revise(store, text):
     for path in before.get('handoffs', {}).values():
         child = c.read(path)
         if child['active'] or child['running']: raise ValueError('Pause active development before revising project')
-    fresh = before['task']['source_snapshot'] if before['mode'] == 'mock' else knowledge.snapshot(SOURCE_PAGE)
+    old_source = before['task']['source_snapshot']
+    fresh = old_source if before['mode'] == 'mock' or old_source.get('kind') == 'local_idea' else knowledge.snapshot(old_source['page_id'])
     def change(s):
         if s['active'] or s['running'] or s['revision'] != before['revision']:
             raise ValueError('State changed during revision')
@@ -135,8 +148,9 @@ def handoff(store, task_id):
                     'state_path': str(store.path), 'hash': plan_hash})
                 c.event(created, 'approval', 'Inherited user-approved feature scope from ' + plan_hash)
                 c.save(child.path, created)
-        store.update(lambda s: (s.setdefault('handoffs', {}).update({task_id: str(child.path)}),
-                               c.event(s, 'handoff', task_id + ' prepared; inactive')))
+        if state.get('handoffs', {}).get(task_id) != str(child.path):
+            store.update(lambda s: (s.setdefault('handoffs', {}).update({task_id: str(child.path)}),
+                                   c.event(s, 'handoff', task_id + ' prepared; inactive')))
         return child
 
 @exclusive_project

@@ -15,19 +15,20 @@ def source_manifest(repo):
             for p in sorted(paths) if p.is_file()}
 
 def task_policy(task):
-    if task.get('task_id') == 'HJ-001':
+    if task.get('task_id') == 'HJ-001' and task.get('kind') != 'planned_feature':
         return EXPECTED
     policy = task.get('verification_policy', {})
     required = policy.get('required_suites')
     if task.get('kind') != 'planned_feature' or policy.get('runner') != 'maven_verify' or not isinstance(required, dict) or set(required) != set(EXPECTED):
         raise ValueError('Task requires an approved Maven verification policy')
+    baseline = task.get('project_context', {}).get('baseline', EXPECTED)
     for folder, suites in required.items():
         if not isinstance(suites, dict) or not suites:
             raise ValueError('Missing required test suites')
         for name, minimum in suites.items():
             if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*(?:Test|IT)', name) or type(minimum) is not int or minimum < 1:
                 raise ValueError('Invalid suite policy')
-        if any(suites.get(name, 0) < minimum for name, minimum in EXPECTED[folder].items()):
+        if any(suites.get(name, 0) < minimum for name, minimum in baseline[folder].items()):
             raise ValueError('Pilot regression policy may not be reduced')
     return required
 

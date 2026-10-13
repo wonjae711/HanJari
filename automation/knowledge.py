@@ -124,6 +124,8 @@ def record_payload(state):
         records.append(('prompts', path.name, path.read_text(encoding='utf-8')))
     guide = c.ROOT / 'PROJECT-AUTOMATION.md'
     if guide.exists(): records.append(('workflow', 'operating-guide', guide.read_text(encoding='utf-8')))
+    multi = c.ROOT / 'MULTIPROJECT.md'
+    if multi.exists(): records.append(('workflow', 'multiproject-guide', multi.read_text(encoding='utf-8')))
     # Obtain actual implementation/review instructions from the runtime prompt builder.
     for stage in ('implement', 'review', 'final_test', 'manager'):
         dummy = c.new_state({'title': 'ROLE TEMPLATE', 'task_id': 'TEMPLATE'}, 'mock')
@@ -156,21 +158,24 @@ def append_record(page_id, key, body):
             {'object': 'block', 'type': 'paragraph', 'paragraph': {'rich_text': rich}}]})
     return record_id
 
-def flush(store, settings=None):
+def flush(store, settings=None, config=None):
+    config = config or {}
     state = c.read(store.path)
     if state['mode'] != 'live': return []
     settings = settings or c.read(c.ROOT / 'integrations.json')
     pages = settings.get('notion', {}).get('knowledge_pages', {})
     outcomes = []
+    # All projects share HanJari's automation pages; serialize reconciliation too.
     with c.lock(c.ROOT / '.runtime-delivery/knowledge.lock', timeout=0):
         for category, key, body in record_payload(state):
-            if category not in pages:
+            destinations = config.get('automation_pages', pages) if category in ('workflow', 'prompts') else pages
+            if category not in destinations:
                 outcomes.append(category + ': setup_required'); continue
-            identity = p.digest({'page': pages[category], 'key': key, 'body': redact(body)})
+            identity = p.digest({'page': destinations[category], 'key': key, 'body': redact(body)})
             receipt = c.read(store.path).get('knowledge_receipts', {}).get(identity, {})
             if receipt.get('status') in ('sent', 'needs_user'): continue
             try:
-                append_record(pages[category], key, body)
+                append_record(destinations[category], key, body)
             except d.NotConfigured:
                 outcomes.append(category + ': setup_required'); break
             except Exception:
@@ -185,15 +190,16 @@ def flush(store, settings=None):
             if receipt['status'] != 'sent': break  # One failure per flush; no storm.
     return outcomes
 
-def best_effort(store):
+def best_effort(store, config=None):
+    config = config or {}
     try:
-        outcomes = flush(store)
+        outcomes = flush(store, config.get('integrations'), config)
         for outcome in sorted(set(outcomes)): print('[knowledge] ' + outcome, flush=True)
         if any('pending' in v or 'needs_user' in v or 'setup_required' in v for v in outcomes):
             state = c.read(store.path)
             issue = p.digest(outcomes)
             if state.get('knowledge_notice') != issue:
-                settings = c.read(c.ROOT / 'integrations.json')
+                settings = config.get('integrations') or c.read(c.ROOT / 'integrations.json')
                 d.send_notification({'snapshot': {'task_id': state['task'].get('task_id', 'Planning'),
                                                   'stage': 'needs_user'}}, settings)
                 store.update(lambda s: s.update(knowledge_notice=issue))

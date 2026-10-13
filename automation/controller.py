@@ -280,10 +280,12 @@ def invoke(config, s, directory):
         time.sleep(.05)
         return {"outcome": "pass", "summary": "MOCK: " + s["stage"],
                 "evidence": ["모의 결과입니다. 실제 코드/테스트 검증이 아닙니다."], "review_files": []}
+    from project_profiles import check_binding
+    check_binding(s, config)
     repo = Path(config["project_dir"]).resolve()
     subprocess.run(["git", "-C", str(repo), "rev-parse", "--show-toplevel"], check=True, capture_output=True)
     branch = subprocess.check_output(["git", "-C", str(repo), "branch", "--show-current"], text=True).strip()
-    if not branch or branch in ("main", "master", config.get("base_branch", "main")):
+    if not planning.is_project(s) and (not branch or branch in ("main", "master", config.get("base_branch", "main"))):
         raise ValueError("실제 실행에는 별도의 기능 브랜치가 필요합니다.")
     agent = "claude" if s["stage"] == "implement" else "codex"
     # Do not accidentally turn subscription workflows into API-key billing.
@@ -316,7 +318,7 @@ def invoke(config, s, directory):
     started_at = time.time()
     child_env = child_environment(config)
     if agent == 'codex':
-        child_env = {k: v for k, v in child_env.items() if not k.startswith('HANJARI_')}
+        child_env = {k: v for k, v in child_env.items() if not k.startswith('HANJARI_') and k not in config.get('test_db_env', [])}
     with (directory / "stdout.log").open("w", encoding="utf-8") as stdout, (directory / "stderr.log").open("w", encoding="utf-8") as stderr:
         proc = subprocess.Popen(args, cwd=repo, stdin=subprocess.PIPE, stdout=stdout, stderr=stderr,
                                 text=True, encoding="utf-8", shell=False, env=child_env,
@@ -339,6 +341,8 @@ def invoke(config, s, directory):
     return read(output)
 
 def execute_stage(config, state, directory):
+    from project_profiles import check_binding
+    check_binding(state, config)
     if state['mode'] == 'live' and state['stage'] in ('implement', 'final_test'):
         from verification_evidence import task_policy
         task_policy(state['task'])
@@ -356,12 +360,14 @@ def deliver_events(store, config):
         from delivery import best_effort
         best_effort(store, config)
         from knowledge import best_effort as publish_knowledge
-        publish_knowledge(store)
+        publish_knowledge(store, config)
 
 
 def run(store, config, runner=None):
     if runner is None:
         runner = execute_stage
+    from project_profiles import check_binding
+    check_binding(read(store.path), config)
     run_guard.limits(config)
     with ExitStack() as locks:
         # Protect different state directories that target the same checkout too.
@@ -376,6 +382,10 @@ def run(store, config, runner=None):
         while True:
             selected = {}
             def claim(s):
+                parent_path = s.get('project_handoff', {}).get('state_path')
+                paused = read(parent_path).get('pause_requested') if parent_path else s.get('pause_requested')
+                if paused:
+                    s['active'] = False
                 if s["running"]:
                     raise ValueError("중단된 실행 기록이 있습니다. 프로세스 종료 확인 후 recover를 사용하세요.")
                 if s["active"] and s["stage"] in STEPS:

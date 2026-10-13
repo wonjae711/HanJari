@@ -15,7 +15,8 @@ $nodes = $xml.GetElementsByTagName('text')
 $nodes.Item(0).AppendChild($xml.CreateTextNode($env:HANJARI_NOTICE_TITLE)) | Out-Null
 $nodes.Item(1).AppendChild($xml.CreateTextNode($env:HANJARI_NOTICE_TEXT)) | Out-Null
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-$toast.Tag = 'hanjari'
+$noticeTag = if ($env:HANJARI_NOTICE_TAG) { $env:HANJARI_NOTICE_TAG } else { 'hanjari' }
+$toast.Tag = $noticeTag
 $toast.Group = 'automation'
 $toast.ExpirationTime = [DateTimeOffset]::Now.AddHours(1)
 $notifier = [Windows.UI.Notifications.ToastNotifier][Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app.AppID)
@@ -25,6 +26,6 @@ if ($null -ne $notifier.Setting -and $notifier.Setting.ToString() -ne 'Enabled')
 $notifier.Show($toast)
 Start-Sleep -Milliseconds 800
 $recorded = [Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory($app.AppID) |
-    Where-Object { $_.Tag -eq 'hanjari' -and $_.Group -eq 'automation' }
+    Where-Object { $_.Tag -eq $noticeTag -and $_.Group -eq 'automation' }
 if ($null -eq $recorded) { throw 'Toast was not found in Windows notification history.' }
 Write-Output 'Windows toast history confirmed. Banner visibility still requires user confirmation.'
