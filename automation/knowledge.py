@@ -65,6 +65,9 @@ def snapshot(page_id):
         nonlocal count
         if depth > 12: raise ValueError('Notion source nesting too deep')
         for block in children(identity):
+            from project_documents import is_managed
+            if is_managed(block):
+                continue  # Generated output is not a new requirement/source edit.
             count += 1
             if count > 2000: raise ValueError('Notion source too large')
             kind = block['type']
@@ -126,6 +129,8 @@ def record_payload(state):
     if guide.exists(): records.append(('workflow', 'operating-guide', guide.read_text(encoding='utf-8')))
     multi = c.ROOT / 'MULTIPROJECT.md'
     if multi.exists(): records.append(('workflow', 'multiproject-guide', multi.read_text(encoding='utf-8')))
+    documents = c.ROOT / 'PROJECT-DOCUMENTS.md'
+    if documents.exists(): records.append(('workflow', 'project-documents-guide', documents.read_text(encoding='utf-8')))
     # Obtain actual implementation/review instructions from the runtime prompt builder.
     for stage in ('implement', 'review', 'final_test', 'manager'):
         dummy = c.new_state({'title': 'ROLE TEMPLATE', 'task_id': 'TEMPLATE'}, 'mock')
@@ -167,6 +172,8 @@ def flush(store, settings=None, config=None):
     outcomes = []
     # All projects share HanJari's automation pages; serialize reconciliation too.
     with c.lock(c.ROOT / '.runtime-delivery/knowledge.lock', timeout=0):
+        from project_documents import flush as publish_documents
+        outcomes.extend(publish_documents(store, settings))
         for category, key, body in record_payload(state):
             destinations = config.get('automation_pages', pages) if category in ('workflow', 'prompts') else pages
             if category not in destinations:
@@ -219,7 +226,7 @@ def main():
     elif args.command == 'retry':
         if not args.reason: raise ValueError('Retry reason required')
         def retry(s):
-            for receipt in s.get('knowledge_receipts', {}).values():
+            for receipt in list(s.get('knowledge_receipts', {}).values()) + list(s.get('document_receipts', {}).values()):
                 if receipt['status'] == 'needs_user':
                     receipt.setdefault('history', []).append({'attempts': receipt['attempts'], 'reason': args.reason})
                     receipt.update(status='pending', attempts=0)
@@ -228,7 +235,9 @@ def main():
         if not args.activate: raise ValueError('--activate required')
         outcomes = flush(store)
         print('\n'.join(outcomes))
-        if any('setup_required' in v for v in outcomes) or any(v['status'] != 'sent' for v in c.read(store.path).get('knowledge_receipts', {}).values()):
+        state = c.read(store.path)
+        receipts = list(state.get('knowledge_receipts', {}).values()) + list(state.get('document_receipts', {}).values())
+        if any('setup_required' in v for v in outcomes) or any(v['status'] != 'sent' for v in receipts):
             raise ValueError('Some records remain undelivered')
 
 if __name__ == '__main__':

@@ -193,7 +193,7 @@ def main(argv=None):
     elif args.command == 'retry-sync':
         if not args.text or not args.text.strip(): raise ValueError('Retry reason required in --text')
         def retry(s):
-            for receipt in s.get('knowledge_receipts', {}).values():
+            for receipt in list(s.get('knowledge_receipts', {}).values()) + list(s.get('document_receipts', {}).values()):
                 if receipt['status'] == 'needs_user':
                     receipt.setdefault('history', []).append({'attempts': receipt['attempts'], 'reason': args.text})
                     receipt.update(status='pending', attempts=0)

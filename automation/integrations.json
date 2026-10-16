@@ -11,6 +11,20 @@
     "data_source_id": "c13d3bd7-64b7-4d84-b907-506a54f5ef10",
     "database_url": "https://app.notion.com/p/9f239dfc79d34d9695b79a593d23b6e2",
     "sync_mode": "direct-api",
+    "project_documents": {
+      "data_source_id": "e8e30a99-a638-4c4f-9b5a-ef8f5ff97b26",
+      "title_property": "문서",
+      "status_property": "상태",
+      "pages": {
+        "overview": {"page_id": "3f4d0420-a262-8139-85ac-c8fb6aa13ea6", "title": "프로젝트 개요"},
+        "decisions": {"page_id": "3f4d0420-a262-8123-a787-fd28ca348c5f", "title": "개발 방향 기록용"},
+        "requirements": {"page_id": "3f4d0420-a262-813e-bcd1-ea3f5922fec8", "title": "요구사항 명세서"},
+        "sequence": {"page_id": "3f4d0420-a262-8175-b310-f1be8d2d42c7", "title": "기능별 난이도 및 구현 순서"},
+        "architecture": {"page_id": "3f4d0420-a262-812e-9916-c3b9388dcb2c", "title": "아키텍처 설계서"},
+        "erd": {"page_id": "3f4d0420-a262-812a-8a8c-fa24e6a8faad", "title": "ERD"},
+        "api": {"page_id": "3f4d0420-a262-8198-bf12-c41d594433a0", "title": "API 명세서"}
+      }
+    },
     "tasks": {
       "HJ-001": "3f5d0420-a262-81c2-80b9-d349ca4596e5"
     },

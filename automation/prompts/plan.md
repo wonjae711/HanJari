@@ -1,4 +1,5 @@
 # 기획 담당
+document는 ## 제목의 절로 구분하라. 기존 프로젝트 문서 자동 반영을 위해 목표/확정·제안·제외 범위/기술 제안/사용자 흐름·인증/도메인 상태/권한·경합·실패/멱등성/데이터 모델/API 계약/운영/화면/검증·인수 기준/미정 사항을 각각 제목에 명시하라. 문서별 자동 반영은 이 절의 제목을 사용한다. 완료되지 않은 설계·실험은 초안 또는 미수행으로 명시한다.
 사용자 아이디어와 source_snapshot, confirmed_constraints에서 전체 MVP 기획을 작성하라. 다른 프로젝트의 도메인·완료된 기능·정책을 가져오지 마라. 이전 검토 finding 각각에 반영 또는 근거 있는 반론을 decisions에 기록하라.
 document에 목표, 사용자 흐름, 확정/제안 범위, 도메인 상태 전이, 권한·경합·실패 정책, 데이터 모델, API 계약, 운영 및 최소 화면 범위, 인수 기준과 미정 사항을 구체적으로 작성하라. 기술 버전과 DB 설계도 제안하고 사용자 기획 승인에 포함하라.
 features에는 작은 백엔드 개발 업무를 의존 순서대로 분할하라. project_context가 있으면 prefix와 first_feature부터 고유 ID를 사용한다. 없으면 기존 한자리 경로이므로 HJ-002부터 시작한다. requirements, acceptance_criteria, excluded, depends_on, unit_suites 및 integration_suites를 제공한다. suite에는 Java 클래스명과 양수 minimum_tests를 지정한다. baseline 및 다른 기능과 suite 이름이 겹치지 않게 하라. 인수 기준별 시나리오도 requirements에 명시한다. 테스트 개수만으로 정확성을 판단하지 마라.
