@@ -131,6 +131,9 @@ def record_payload(state):
     if multi.exists(): records.append(('workflow', 'multiproject-guide', multi.read_text(encoding='utf-8')))
     documents = c.ROOT / 'PROJECT-DOCUMENTS.md'
     if documents.exists(): records.append(('workflow', 'project-documents-guide', documents.read_text(encoding='utf-8')))
+    for name in ('DESKTOP.md', 'DASHBOARD.md'):
+        guide = c.ROOT / name
+        if guide.exists(): records.append(('workflow', name.lower(), guide.read_text(encoding='utf-8')))
     # Obtain actual implementation/review instructions from the runtime prompt builder.
     for stage in ('implement', 'review', 'final_test', 'manager'):
         dummy = c.new_state({'title': 'ROLE TEMPLATE', 'task_id': 'TEMPLATE'}, 'mock')

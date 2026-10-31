@@ -1,11 +1,13 @@
 # HanJari 로컬 제어 프로그램 — 첫 버전
 
+**데스크톱 앱:** 바탕화면 「한자리 스튜디오」 또는 `python automation/desktop.py`로 실행합니다. 브라우저·웹 서버 없이 기획 확인, 실행·중단·승인, 기능별 리뷰를 처리합니다. 시작·종료·DB 환경변수 안내는 [데스크톱 운영 안내](DESKTOP.md)에 있습니다. 선택적 [웹 대시보드](DASHBOARD.md)도 사용할 수 있습니다.
+
 기획 결과는 기존 Notion 「프로젝트 문서」의 개요·개발 방향·요구사항·구현 순서·아키텍처·ERD·API 문서에도 버전별 초안으로 반영합니다. 원래 본문을 보존하며, 승인 상태와 재시도 방법은 [프로젝트 문서 연결 안내](PROJECT-DOCUMENTS.md)를 참고하세요.
 
-현재 권장 진입점은 `python automation/workspace.py run --project hanjari --activate`입니다(저장소 루트 기준). 아이디어 → 기획·독립 검토 → 사용자 승인 → 기능별 개발·검증 → 사용자 코드 리뷰로 이어집니다. 다른 프로젝트 등록, 중간 개입, 기록 위치와 지원 제한은 [통합 운영 안내](MULTIPROJECT.md)를 참고하세요. `workspace.py`는 기본 live이며 `--activate` 없이는 실행하지 않습니다. 아래의 기본 mock 설명은 기존 `controller.py`에 해당합니다.
+CLI 진입점은 `python automation/workspace.py run --project hanjari --activate`입니다(저장소 루트 기준). 아이디어 → 기획·독립 검토 → 사용자 승인 → 기능별 개발·검증 → 사용자 코드 리뷰로 이어집니다. 다른 프로젝트 등록, 중간 개입, 기록 위치와 지원 제한은 [통합 운영 안내](MULTIPROJECT.md)를 참고하세요. `workspace.py`는 기본 live이며 `--activate` 없이는 실행하지 않습니다. 아래의 기본 mock 설명은 기존 `controller.py`에 해당합니다.
 
 Python 3.11 이상, 추가 패키지 없음. 시작 명령을 실행한 동안에만 작동합니다.
-현재 UI는 터미널입니다. 기본 모드는 mock이며 모델 사용량을 소비하지 않습니다.
+데스크톱·웹 GUI는 기본 live이며 사용자가 실행해야 모델을 호출합니다. 기존 `controller.py`의 기본 모드는 mock이며 모델 사용량을 소비하지 않습니다.
 
 ## 프로젝트 전체 기획 자동화
 
