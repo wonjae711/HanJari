@@ -14,6 +14,38 @@ def state():
 
 
 class DesktopTests(unittest.TestCase):
+    def test_rounded_button_keeps_disabled_action_guard(self):
+        root=tk.Tk();root.withdraw();self.addCleanup(root.destroy)
+        action=Mock()
+        button=d.RoundButton(root,text='실행',command=action,state='disabled')
+        button.activate();action.assert_not_called()
+        button.configure(state='normal');button.activate();action.assert_called_once()
+
+    def test_next_step_reviews_before_approval(self):
+        self.assertEqual(d.next_step(state())[2],'plan')
+        s=state();s['stage']='pr_ready'
+        self.assertEqual(d.next_step(s)[2],'review')
+        s['busy']=True
+        self.assertEqual(d.next_step(s)[2],'requests')
+
+    def test_project_display_name_does_not_change_identity(self):
+        project={'id':'hanjari','title':'한자리'}
+        self.assertEqual(d.project_label(project),'영화 예매 MVP')
+        self.assertEqual(project,{'id':'hanjari','title':'한자리'})
+
+    def test_readable_markdown_and_search(self):
+        root=tk.Tk();root.withdraw();self.addCleanup(root.destroy)
+        backend=Mock();backend.mode='live';backend.jobs=[];backend.mutex=threading.Lock()
+        app=d.Desktop(root,backend,poll=False)
+        s=state();s['document']='# 제목\n**중요** `GET /movies`\n본문'
+        app.render(s)
+        visible=app.plan_text.get('1.0','end')
+        self.assertNotIn('**중요**',visible);self.assertIn('중요',visible)
+        self.assertIn('GET /movies',visible)
+        app.search_var.set('본문');app.search_plan()
+        self.assertTrue(app.plan_text.tag_ranges('match'))
+        backend.submit.assert_not_called()
+
     def test_no_execution_before_approval(self):
         self.assertNotIn('run',d.allowed_actions(state()))
         self.assertIn('approve',d.allowed_actions(state()))

@@ -5,16 +5,18 @@ import hashlib
 import os
 from pathlib import Path
 import queue
+import re
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
+from tkinter import font as tkfont
 from datetime import datetime
 from dashboard import Backend, ROOT, TEXT_ACTIONS
 
-BG = '#f4f5fa'
-INK = '#272c43'
-MUTED = '#747c92'
-PURPLE = '#6954ce'
+BG = '#101514'
+INK = '#e3eee9'
+MUTED = '#a1b6ac'
+PURPLE = '#73e2bb'
 STAGES = {'not_started':'첫 기획을 시작할 준비가 됐어요', 'plan':'기획 작성', 'spec_review':'독립 기획 검토',
           'awaiting_plan_approval':'전체 기획 승인 대기', 'implement':'기능 개발', 'review':'코드 리뷰',
           'final_test':'최종 검증', 'pr_ready':'사용자 코드 리뷰 대기', 'manager':'문제 분석 · 재계획', 'needs_user':'사용자 판단 필요'}
@@ -30,6 +32,80 @@ HELP = {
     'accept-feature':'관련 코드와 검증 근거를 검토한 후 판단 근거를 기록하세요. PR은 자동 병합하지 않습니다.',
     'retry-sync':'게시 실패 원인을 해결한 뒤 조치 내용을 남깁니다. 이후 Notion 동기화를 실행하세요.',
     'reset-breaker':'반복 실패 원인을 해결한 경우에만 제한을 해제하세요. 원인과 해결 내용을 기록합니다.'}
+
+
+def rounded(canvas,x1,y1,x2,y2,r,**options):
+    r=min(r,(x2-x1)/2,(y2-y1)/2)
+    return canvas.create_polygon(x1+r,y1,x2-r,y1,x2,y1,x2,y1+r,x2,y2-r,x2,y2,x2-r,y2,
+                                 x1+r,y2,x1,y2,x1,y2-r,x1,y1+r,x1,y1,smooth=True,splinesteps=24,**options)
+
+
+class RoundButton(tk.Canvas):
+    """Native Tk control with rounded corners, hover and keyboard activation."""
+    def __init__(self,parent,**options):
+        self.options=dict(text='',bg='#283a31',fg=INK,state='normal',command=None,
+                          activebackground='#365946',activeforeground=INK,disabledforeground='#768b80',padx=16,pady=10,anchor='center')
+        self.options.update(options)
+        self.font=tkfont.Font(family='맑은 고딕',size=10)
+        super().__init__(parent,bg=parent.cget('bg'),highlightthickness=0,bd=0,takefocus=1,cursor='hand2')
+        self.hover=False;self.focused=False
+        self.bind('<Configure>',lambda e:self.paint())
+        self.bind('<Enter>',lambda e:self.over(True))
+        self.bind('<Leave>',lambda e:self.over(False))
+        self.bind('<ButtonRelease-1>',lambda e:self.activate())
+        self.bind('<Return>',lambda e:self.activate())
+        self.bind('<space>',lambda e:self.activate())
+        self.bind('<FocusIn>',lambda e:self.focus(True))
+        self.bind('<FocusOut>',lambda e:self.focus(False))
+        self.resize()
+
+    def resize(self):
+        super().configure(width=self.font.measure(self.options['text'])+2*self.options['padx'],height=self.font.metrics('linespace')+2*self.options['pady'])
+        self.paint()
+
+    def configure(self,cnf=None,**kwargs):
+        if cnf:kwargs.update(cnf)
+        self.options.update(kwargs);self.resize()
+    config=configure
+
+    def cget(self,key):
+        return self.options[key] if key in self.options else super().cget(key)
+
+    def paint(self):
+        if not self.winfo_exists():return
+        self.delete('all')
+        width=max(self.winfo_width(),int(super().cget('width')));height=int(super().cget('height'))
+        disabled=self.options['state']=='disabled'
+        fill=self.options['activebackground'] if self.hover and not disabled else self.options['bg']
+        foreground=self.options['disabledforeground'] if disabled else self.options['activeforeground'] if self.hover else self.options['fg']
+        rounded(self,1,1,width-1,height-1,12,fill=fill,outline=PURPLE if self.focused else fill,width=1)
+        left=self.options.get('anchor')=='w'
+        self.create_text(self.options['padx'] if left else width/2,height/2,text=self.options['text'],fill=foreground,font=self.font,anchor='w' if left else 'center')
+
+    def over(self,value):self.hover=value;self.paint()
+    def focus(self,value):self.focused=value;self.paint()
+    def activate(self):
+        if self.options['state']!='disabled' and self.options['command']:
+            self.focus_set();self.options['command']()
+
+
+class RoundPanel(tk.Canvas):
+    def __init__(self,parent,fill,padding=16):
+        super().__init__(parent,bg=parent.cget('bg'),highlightthickness=0,bd=0,height=20)
+        self.fill=fill;self.padding=padding
+        self.body=tk.Frame(self,bg=fill)
+        self.window=self.create_window(padding,padding,window=self.body,anchor='nw')
+        self.bind('<Configure>',self.layout)
+        self.body.bind('<Configure>',self.layout)
+
+    def layout(self,event=None):
+        width=max(self.winfo_width(),40)
+        self.itemconfigure(self.window,width=max(10,width-2*self.padding))
+        height=self.body.winfo_reqheight()+2*self.padding
+        if int(self.cget('height'))!=height:self.configure(height=height)
+        self.delete('surface')
+        rounded(self,0,0,width,height,18,fill=self.fill,outline=self.fill,tags='surface')
+        self.tag_lower('surface')
 
 
 def allowed_actions(state):
@@ -52,16 +128,46 @@ def payload_for(state, action):
     return {'action':action, 'project':state['project']['id'], 'hash':state.get('candidate_hash'), 'feature':state.get('current_feature')}
 
 
+def project_label(project):
+    # Display alias only: stable project identity and approval hashes are preserved.
+    return '영화 예매 MVP' if project['id']=='hanjari' else project['title']
+
+
+def next_step(state):
+    if not state: return ('상태를 확인하고 있어요', '로컬 프로젝트 기록을 불러옵니다.', 'requests', '처리 현황 보기')
+    if state.get('busy') or state.get('active') or state.get('running'):
+        return ('작업이 진행 중이에요', '필요하면 중단을 요청하거나 아이디어를 남겨 주세요.', 'requests', '처리 현황 보기')
+    if state['stage']=='needs_user':
+        return ('확인이 필요한 문제가 있어요', '검토 근거와 중단 사유를 확인한 뒤 다음 작업을 결정하세요.', 'review', '검토 근거 보기')
+    if state['stage']=='pr_ready':
+        return ('이번 기능을 리뷰해 주세요', '관련 파일과 테스트 근거를 확인하고 기능 수락 여부를 결정하세요.', 'review', '코드 리뷰 시작')
+    if state['stage']=='awaiting_plan_approval' and not state.get('approved'):
+        return ('기획안을 검토할 차례예요', '전체 범위와 인수 기준을 확인한 뒤 승인하거나 수정을 요청하세요.', 'plan', '기획안 검토하기')
+    return ('다음 작업을 시작할 수 있어요', '실행 버튼을 누를 때만 AI가 작업합니다. 중요한 결정은 다시 확인합니다.', 'run', '다음 작업 실행')
+
+
 def replace_text(widget, value):
     """Keep selection/scroll intact when the polled content has not changed."""
     if getattr(widget, '_content', None) == value: return
     position = widget.yview()[0]
     widget.configure(state='normal')
     widget.delete('1.0', 'end')
-    widget.insert('1.0', value)
-    for i, line in enumerate(value.splitlines(), 1):
-        if line.startswith('# '): widget.tag_add('h1', f'{i}.0', f'{i}.end')
-        elif line.startswith('## '): widget.tag_add('h2', f'{i}.0', f'{i}.end')
+    code=False
+    for line in value.splitlines(keepends=True):
+        if line.strip().startswith('```'):
+            code=not code
+            continue
+        heading=re.match(r'^(#{1,6})\s+(.*)',line.rstrip('\n')) if not code else None
+        if heading:
+            widget.insert('end',heading[2]+'\n','h1' if len(heading[1])==1 else 'h2')
+        elif code:
+            widget.insert('end',line,'code')
+        else:
+            # Support emphasis and inline code without evaluating HTML or links.
+            for part in re.split(r'(\*\*[^*\n]+\*\*|`[^`\n]+`)',line):
+                if part.startswith('**') and part.endswith('**') and len(part)>4:widget.insert('end',part[2:-2],'bold')
+                elif part.startswith('`') and part.endswith('`') and len(part)>2:widget.insert('end',part[1:-1],'code')
+                else:widget.insert('end',part)
     widget.configure(state='disabled')
     widget.yview_moveto(position)
     widget._content = value
@@ -77,7 +183,8 @@ class Desktop:
         self.pending_submit = False
         self.closed = False
         self.last_features = None
-        root.title('한자리 스튜디오 — Desktop')
+        self.current_view='overview'
+        root.title('한자리 — AI 오케스트레이터')
         root.geometry('1280x850')
         root.minsize(980, 720)
         root.configure(bg=BG)
@@ -87,13 +194,22 @@ class Desktop:
         if icon.exists(): root.iconbitmap(str(icon))
         self.style = ttk.Style(root)
         self.style.theme_use('clam')
-        self.style.configure('TCombobox', padding=7, fieldbackground='#ffffff')
-        self.style.configure('Treeview', rowheight=32, background='#ffffff', fieldbackground='#ffffff', borderwidth=0, foreground=INK)
-        self.style.configure('Treeview.Heading', font=('맑은 고딕', 10, 'bold'), background='#eeeaf8', padding=9)
-        self.style.map('Treeview', background=[('selected', '#e9e4fb')], foreground=[('selected', '#493a92')])
-        self.style.configure('Horizontal.TProgressbar', background='#9482e1', troughcolor='#ececf5', borderwidth=0, thickness=6)
+        self.style.configure('TCombobox', padding=7, fieldbackground='#26392f', background='#26392f', foreground=INK, arrowcolor=INK)
+        self.style.map('TCombobox', fieldbackground=[('readonly','#26392f')], foreground=[('readonly',INK)])
+        self.style.configure('TEntry', fieldbackground='#26392f', foreground=INK, insertcolor=INK, bordercolor='#365946', padding=5)
+        self.style.configure('TButton', background='#283a31', foreground=INK, padding=6, borderwidth=0)
+        self.style.map('TButton', background=[('active','#365946')])
+        self.style.configure('TCheckbutton', background='#19211e', foreground=INK)
+        self.style.map('TCheckbutton', background=[('active','#19211e')], foreground=[('active',INK)])
+        self.style.configure('Vertical.TScrollbar', background='#365946', troughcolor='#19211e', arrowcolor=INK, borderwidth=0)
+        self.style.configure('Treeview', rowheight=32, background='#19211e', fieldbackground='#19211e', borderwidth=0, foreground=INK)
+        self.style.configure('Treeview.Heading', font=('맑은 고딕', 10, 'bold'), background='#24332c', foreground=INK, padding=9)
+        self.style.map('Treeview', background=[('selected', '#305b49')], foreground=[('selected', '#dcfff0')])
+        self.style.configure('Horizontal.TProgressbar', background='#73e2bb', troughcolor='#283a31', borderwidth=0, thickness=6)
         self.buttons = {}
         self.build()
+        root.bind('<F5>',lambda e:self.refresh())
+        root.bind('<Control-f>',self.focus_search)
         if poll:
             self.root.after(50, self.refresh)
             self.root.after(100, self.drain)
@@ -103,31 +219,53 @@ class Desktop:
                         fg=color, bg=bg or parent.cget('bg'), anchor='w', **kwargs)
 
     def button(self, parent, action, primary=False):
-        button = tk.Button(parent, text=NAMES[action], command=lambda:self.action(action), relief='flat', bd=0,
-                           bg=PURPLE if primary else '#eae7f5', fg='white' if primary else '#5f538b',
-                           activebackground='#d7cff2', activeforeground=INK, disabledforeground='#a7a2b8',
+        button = RoundButton(parent, text=NAMES[action], command=lambda:self.action(action), relief='flat', bd=0,
+                           bg=PURPLE if primary else '#283a31', fg='#0a2b1b' if primary else '#c4e2d3',
+                           activebackground='#365946', activeforeground=INK, disabledforeground='#768b80',
                            padx=14, pady=9, cursor='hand2', state='disabled')
         self.buttons.setdefault(action, []).append(button)
+        button._primary=primary
+        button.bind('<Enter>',lambda e:self.tooltip(button,action),add='+')
+        button.bind('<Leave>',lambda e:self.hide_tip(),add='+')
+        button.bind('<ButtonPress>',lambda e:self.hide_tip())
         return button
 
+    def hide_tip(self):
+        if getattr(self,'tip',None):
+            self.tip.destroy();self.tip=None
+
+    def tooltip(self,button,action):
+        self.hide_tip()
+        explanation=HELP[action]
+        if button.cget('state')=='disabled':
+            explanation=('기획안을 먼저 검토하고 승인해 주세요.' if action=='run' and self.state and self.state['stage']=='awaiting_plan_approval' else
+                         '현재 단계 또는 요청 처리 중에는 사용할 수 없습니다. 진행 현황을 확인하세요.')
+        tip=tk.Toplevel(self.root);tip.overrideredirect(True);self.tip=tip
+        tk.Label(tip,text=explanation,bg='#30493c',fg='white',wraplength=340,justify='left',padx=12,pady=9).pack()
+        tip.geometry('+'+str(min(button.winfo_rootx(),self.root.winfo_screenwidth()-380))+'+'+str(button.winfo_rooty()+button.winfo_height()+5))
+
     def reader(self, parent):
-        frame=tk.Frame(parent,bg='white')
+        frame=tk.Frame(parent,bg='#19211e')
         frame.pack(fill='both',expand=True)
         text=tk.Text(frame,wrap='word',relief='flat',borderwidth=0,padx=22,pady=18,
-                     font=('맑은 고딕',10),background='white',foreground=INK,spacing3=7,selectbackground='#ddd5f7',state='disabled')
+                     font=('맑은 고딕',11),background='#19211e',foreground=INK,spacing3=8,selectbackground='#365946',state='disabled')
         scrollbar=ttk.Scrollbar(frame,command=text.yview)
         text.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side='right',fill='y');text.pack(side='left',fill='both',expand=True)
-        text.tag_configure('h1',font=('맑은 고딕',17,'bold'),foreground='#483886',spacing1=10,spacing3=14)
-        text.tag_configure('h2',font=('맑은 고딕',12,'bold'),foreground='#60508f',spacing1=14,spacing3=8)
+        text.tag_configure('h1',font=('맑은 고딕',17,'bold'),foreground='#a3f2d2',spacing1=10,spacing3=14)
+        text.tag_configure('h2',font=('맑은 고딕',12,'bold'),foreground='#73e2bb',spacing1=14,spacing3=8)
+        text.tag_configure('bold',font=('맑은 고딕',11,'bold'))
+        text.tag_configure('code',font=('Consolas',10),background='#23362c',foreground='#bdebd5')
+        text.tag_configure('match',background='#426f58',foreground=INK)
+        text.bind('<Control-a>',lambda e:(text.tag_add('sel','1.0','end-1c'),'break')[-1])
         return text
 
     def build(self):
-        sidebar=tk.Frame(self.root,bg='#25273d',width=208)
+        sidebar=tk.Frame(self.root,bg='#0b100e',width=220)
         sidebar.pack(side='left',fill='y');sidebar.pack_propagate(False)
         self.label(sidebar,'한자리',size=25,bold=True,color='white').pack(anchor='w',padx=25,pady=(30,4))
-        self.label(sidebar,'AUTOMATION STUDIO',size=8,color='#a7a0cf').pack(anchor='w',padx=27)
-        self.label(sidebar,'PROJECT',size=8,color='#9997b0').pack(anchor='w',padx=25,pady=(36,9))
+        self.label(sidebar,'AI ORCHESTRATOR',size=8,color='#73e2bb').pack(anchor='w',padx=27)
+        self.label(sidebar,'프로젝트 선택',size=9,color='#a1b6ac').pack(anchor='w',padx=25,pady=(28,9))
         self.project_value=tk.StringVar()
         self.selector=ttk.Combobox(sidebar,textvariable=self.project_value,state='readonly',width=17)
         self.selector.pack(padx=20,fill='x')
@@ -135,46 +273,83 @@ class Desktop:
         self.project_keys=[]
         self.nav={}
         for key,name in [('overview','진행 현황'),('plan','기획과 결정'),('features','기능별 업무'),('review','리뷰와 검증'),('activity','활동 기록'),('requests','요청 · 복구')]:
-            button=tk.Button(sidebar,text=name,relief='flat',bg='#25273d',fg='#c4c2d4',activebackground='#45415e',
-                             activeforeground='white',anchor='w',padx=16,pady=12,command=lambda k=key:self.show(k),cursor='hand2')
+            button=RoundButton(sidebar,text=name,relief='flat',bg='#0b100e',fg='#a1b6ac',activebackground='#244c39',
+                             activeforeground='#e3eee9',anchor='w',padx=16,pady=12,command=lambda k=key:self.show(k),cursor='hand2')
             button.pack(fill='x',padx=12,pady=(20 if not self.nav else 3,0));self.nav[key]=button
-        self.label(sidebar,'●  DESKTOP · LOCAL',size=8,color='#a6c9bd').pack(side='bottom',anchor='w',padx=25,pady=25)
+        self.label(sidebar,'●  내 PC에서 실행 중',size=8,color='#73e2bb').pack(side='bottom',anchor='w',padx=25,pady=25)
         main=tk.Frame(self.root,bg=BG,padx=26,pady=24);main.pack(side='left',fill='both',expand=True)
         header=tk.Frame(main,bg=BG);header.pack(fill='x')
-        self.title=self.label(header,'작업 공간',size=23,bold=True);self.title.pack(side='left')
-        self.mode=self.label(header,self.backend.mode.upper()+' · 독립 데스크톱 앱',color=PURPLE);self.mode.pack(side='right',padx=3)
+        self.title=self.label(header,'작업 공간',size=20,bold=True);self.title.pack(side='left')
+        self.mode=self.label(header,'모의 실행' if self.backend.mode=='mock' else '수동 실행 모드',color=PURPLE);self.mode.pack(side='right',padx=3)
         self.status=self.label(main,'상태를 불러오고 있습니다.',size=14,bold=True);self.status.pack(fill='x',pady=(17,6))
         self.hint=self.label(main,'앱을 열어도 AI 작업이 시작되지 않습니다.',color=MUTED);self.hint.pack(fill='x')
         actions=tk.Frame(main,bg=BG);actions.pack(fill='x',pady=(15,18))
         for action in ('run','pause','note','sync'):
             self.button(actions,action,action=='run').pack(side='left',padx=(0,8))
-        self.content=tk.Frame(main,bg='white',highlightbackground='#e5e5ee',highlightthickness=1)
+        self.content=tk.Frame(main,bg='#19211e',highlightthickness=0)
+        self.footer=self.label(main,'연결 준비 중  ·  F5 새로고침 / Ctrl+F 문서 검색',size=9,color=MUTED)
+        self.footer.pack(side='bottom',fill='x',pady=(12,0))
         self.content.pack(fill='both',expand=True)
-        self.views={key:tk.Frame(self.content,bg='white') for key in self.nav}
-        overview=self.views['overview']
-        self.label(overview,'지금 확인할 내용',size=16,bold=True).pack(anchor='w',padx=23,pady=(20,4))
-        self.steps=self.label(overview,'기획  →  검토  →  승인  →  개발  →  검증  →  코드 리뷰',color=PURPLE)
-        self.steps.pack(fill='x',padx=23,pady=12)
-        cards=tk.Frame(overview,bg='white');cards.pack(fill='x',padx=23,pady=6)
+        self.views={key:tk.Frame(self.content,bg='#19211e') for key in self.nav}
+        overview_host=self.views['overview']
+        self.overview_canvas=tk.Canvas(overview_host,bg='#19211e',highlightthickness=0)
+        overview_scroll=ttk.Scrollbar(overview_host,command=self.overview_canvas.yview)
+        self.overview_canvas.configure(yscrollcommand=overview_scroll.set)
+        overview_scroll.pack(side='right',fill='y');self.overview_canvas.pack(side='left',fill='both',expand=True)
+        overview=tk.Frame(self.overview_canvas,bg='#19211e')
+        overview_window=self.overview_canvas.create_window(0,0,window=overview,anchor='nw')
+        self.overview_canvas.bind('<Configure>',lambda e:self.overview_canvas.itemconfigure(overview_window,width=e.width))
+        overview.bind('<Configure>',lambda e:self.overview_canvas.configure(scrollregion=self.overview_canvas.bbox('all')))
+        self.root.bind('<MouseWheel>',lambda e:self.overview_canvas.yview_scroll(-int(e.delta/120),'units') if self.current_view=='overview' and not isinstance(e.widget,tk.Text) else None)
+        callout_shell=RoundPanel(overview,'#203d2e',padding=18)
+        callout_shell.pack(fill='x',padx=20,pady=(18,14))
+        callout=callout_shell.body
+        self.next_title=self.label(callout,'상태를 확인하고 있어요',size=15,bold=True)
+        self.next_title.pack(anchor='w')
+        self.next_description=self.label(callout,'',color=MUTED,wraplength=650,justify='left')
+        self.next_description.pack(anchor='w',pady=(6,10))
+        self.next_button=RoundButton(callout,text='기획안 검토하기',command=self.follow_next,bg=PURPLE,fg='#0a2b1b',activebackground='#a1f3d2',activeforeground='#e3eee9',relief='flat',padx=16,pady=8,cursor='hand2')
+        self.next_button.pack(anchor='w')
+        self.steps=tk.Frame(overview,bg='#19211e');self.steps.pack(fill='x',padx=20,pady=(0,12))
+        self.step_labels=[]
+        for i,name in enumerate(['기획','검토','승인','개발','검증','리뷰']):
+            self.steps.columnconfigure(i,weight=1)
+            label=self.label(self.steps,str(i+1)+'  '+name,color=MUTED,bg='#26392f',size=9,padx=8,pady=8)
+            label.grid(row=0,column=i,sticky='ew',padx=(0,4));self.step_labels.append(label)
+        cards=tk.Frame(overview,bg='#19211e');cards.pack(fill='x',padx=23,pady=6)
         self.usage_labels={};self.bars={}
         for col,(key,title) in enumerate([('five_hour','CLAUDE · 5시간 / 중단 기준 80%'),('seven_day','CLAUDE · 7일 / 중단 기준 70%')]):
             cards.columnconfigure(col,weight=1)
-            card=tk.Frame(cards,bg='#f6f4fc',padx=16,pady=13)
-            card.grid(row=0,column=col,sticky='nsew',padx=(0,10) if col==0 else (0,0))
+            card_shell=RoundPanel(cards,'#1e2c24',padding=16)
+            card_shell.grid(row=0,column=col,sticky='nsew',padx=(0,12) if col==0 else (0,0))
+            card=card_shell.body
             self.label(card,title,size=9,color=MUTED).pack(anchor='w')
-            self.usage_labels[key]=self.label(card,'—',size=23,bold=True)
+            self.usage_labels[key]=self.label(card,'확인 필요',size=18,bold=True)
             self.usage_labels[key].pack(anchor='w',pady=6)
             self.bars[key]=ttk.Progressbar(card,maximum=100);self.bars[key].pack(fill='x')
         self.freshness=self.label(overview,'사용량 갱신 시각 확인 중',color=MUTED,size=9)
         self.freshness.pack(anchor='w',padx=23,pady=(4,12))
-        quick=tk.Frame(overview,bg='white');quick.pack(fill='x',padx=23)
-        self.button(quick,'approve',True).pack(side='left',padx=(0,8))
-        self.button(quick,'revise').pack(side='left')
         self.overview_text=self.reader(overview)
-        toolbar=tk.Frame(self.views['plan'],bg='white',padx=18,pady=12);toolbar.pack(fill='x')
+        self.overview_text.configure(height=12)
+        toolbar=tk.Frame(self.views['plan'],bg='#19211e',padx=18,pady=12);toolbar.pack(fill='x')
         self.button(toolbar,'approve',True).pack(side='left',padx=(0,8));self.button(toolbar,'revise').pack(side='left')
+        searchbar=tk.Frame(self.views['plan'],bg='#1e2c24',padx=18,pady=9);searchbar.pack(fill='x')
+        self.label(searchbar,'문서 검색',size=9).pack(side='left',padx=(0,10))
+        self.search_var=tk.StringVar()
+        self.search_entry=ttk.Entry(searchbar,textvariable=self.search_var,width=26)
+        self.search_entry.pack(side='left',fill='x',expand=True)
+        self.search_entry.bind('<Return>',lambda e:self.search_plan())
+        ttk.Button(searchbar,text='다음 찾기',command=self.search_plan).pack(side='left',padx=7)
+        self.search_status=self.label(searchbar,'Ctrl+F',size=9,color=MUTED);self.search_status.pack(side='left')
         self.plan_text=self.reader(self.views['plan'])
-        treeframe=tk.Frame(self.views['features'],bg='white');treeframe.pack(fill='x',padx=18,pady=18)
+        featurebar=tk.Frame(self.views['features'],bg='#19211e',padx=18,pady=12);featurebar.pack(fill='x')
+        self.label(featurebar,'기능 검색',size=9).pack(side='left',padx=(0,10))
+        self.feature_filter=tk.StringVar()
+        self.feature_entry=ttk.Entry(featurebar,textvariable=self.feature_filter)
+        self.feature_entry.pack(side='left',fill='x',expand=True)
+        self.feature_filter.trace_add('write',self.filter_features)
+        self.feature_count=self.label(featurebar,'',color=MUTED,size=9);self.feature_count.pack(side='left',padx=10)
+        treeframe=tk.Frame(self.views['features'],bg='#19211e');treeframe.pack(fill='x',padx=18,pady=18)
         self.tree=ttk.Treeview(treeframe,columns=('id','title','status'),show='headings',height=7,selectmode='browse')
         for key,title,width in [('id','업무',90),('title','기능',410),('status','상태',140)]:
             self.tree.heading(key,text=title);self.tree.column(key,width=width,minwidth=60,stretch=key=='title')
@@ -182,20 +357,47 @@ class Desktop:
         sb.pack(side='right',fill='y');self.tree.pack(fill='x',expand=True)
         self.tree.bind('<<TreeviewSelect>>',self.feature_selected)
         self.feature_text=self.reader(self.views['features'])
-        reviewbar=tk.Frame(self.views['review'],bg='white',padx=18,pady=12);reviewbar.pack(fill='x')
+        reviewbar=tk.Frame(self.views['review'],bg='#19211e',padx=18,pady=12);reviewbar.pack(fill='x')
         self.button(reviewbar,'accept-feature',True).pack(side='left')
         self.review_text=self.reader(self.views['review'])
         self.activity_text=self.reader(self.views['activity'])
-        recovery=tk.Frame(self.views['requests'],bg='white',padx=18,pady=12);recovery.pack(fill='x')
+        recovery=tk.Frame(self.views['requests'],bg='#19211e',padx=18,pady=12);recovery.pack(fill='x')
         for action in ('retry-sync','reset-breaker'):self.button(recovery,action).pack(side='left',padx=(0,8))
         self.requests_text=self.reader(self.views['requests'])
-        self.footer=self.label(main,'연결 준비 중',size=9,color=MUTED);self.footer.pack(fill='x',pady=(12,0))
         self.show('overview')
 
     def show(self, key):
+        self.hide_tip()
+        self.current_view=key
         for name,view in self.views.items():
-            view.pack_forget();self.nav[name].configure(bg='#45415e' if name==key else '#25273d',fg='white' if name==key else '#c4c2d4')
+            view.pack_forget();self.nav[name].configure(bg='#244c39' if name==key else '#0b100e',fg='white' if name==key else '#a1b6ac')
         self.views[key].pack(fill='both',expand=True)
+
+    def follow_next(self):
+        if self.stale or not self.state:return
+        target=next_step(self.state)[2]
+        if target=='run':self.action('run')
+        else:self.show(target)
+
+    def focus_search(self,event=None):
+        self.show('plan');self.search_entry.focus_set();self.search_entry.select_range(0,'end')
+        return 'break'
+
+    def search_plan(self):
+        query=self.search_var.get().strip()
+        self.plan_text.tag_remove('match','1.0','end')
+        if not query:self.search_status.configure(text='검색어 입력');return
+        start=getattr(self,'search_end','1.0') if query==getattr(self,'search_query',None) else '1.0'
+        index=self.plan_text.search(query,start,stopindex='end',nocase=True)
+        if not index:index=self.plan_text.search(query,'1.0',stopindex='end',nocase=True)
+        if index:
+            end=f'{index}+{len(query)}c';self.plan_text.tag_add('match',index,end);self.plan_text.see(index)
+            self.search_end=end;self.search_status.configure(text='찾음')
+        else:self.search_end='1.0';self.search_status.configure(text='결과 없음')
+        self.search_query=query
+
+    def filter_features(self,*args):
+        if self.state:self.last_features=None;self.render(self.state)
 
     def change_project(self, event=None):
         self.state=None;self.stale=True;self.last_features=None
@@ -204,7 +406,9 @@ class Desktop:
 
     def enable(self, actions):
         for action,buttons in self.buttons.items():
-            for button in buttons: button.configure(state='normal' if action in actions else 'disabled')
+            for button in buttons:
+                enabled=action in actions
+                button.configure(state='normal' if enabled else 'disabled',bg=(PURPLE if button._primary else '#283a31') if enabled else '#222d26',fg='#0a2b1b' if button._primary and enabled else '#c4e2d3')
 
     def refresh(self):
         if self.closed or self.loading: return
@@ -232,7 +436,7 @@ class Desktop:
                     if current!=requested:
                         self.refresh();continue
                     self.project_keys=[p['id'] for p in projects]
-                    self.selector.configure(values=[p['title']+'  ·  '+p['id'] for p in projects])
+                    self.selector.configure(values=[project_label(p) for p in projects])
                     self.selector.current(self.project_keys.index(state['project']['id']))
                     self.render(state);self.stale=False
                 elif item[0]=='error':
@@ -254,7 +458,7 @@ class Desktop:
 
     def render(self, state):
         self.state=state
-        self.title.configure(text=state['project']['title']+'의 작업 공간')
+        self.title.configure(text=project_label(state['project']))
         stage=STAGES.get(state['stage'],state['stage'])
         if state.get('approved') and state['stage']=='awaiting_plan_approval':stage='기획 승인 완료 · 다음 기능 실행 가능'
         self.status.configure(text=stage)
@@ -262,10 +466,18 @@ class Desktop:
         hint='중단 요청됨 · 현재 단계가 끝날 때까지 기다려 주세요.' if state.get('pause_requested') else (
             '처리 중 · 중단 요청과 아이디어 기록은 가능합니다.' if busy else '수동 활성화 대기 · 앱을 열어도 AI가 실행되지 않습니다.')
         self.hint.configure(text=hint)
+        title,description,_,label=next_step(state)
+        self.next_title.configure(text=title);self.next_description.configure(text=description);self.next_button.configure(text=label)
+        stage_index={'plan':0,'spec_review':1,'awaiting_plan_approval':2,'implement':3,'review':3,'final_test':4,'pr_ready':5}.get(state['stage'],-1)
+        if state.get('approved') and stage_index==2:stage_index=3
+        for i,label_widget in enumerate(self.step_labels):
+            label_widget.configure(bg=PURPLE if i==stage_index else '#253f30' if i<stage_index else '#26392f',fg='#0a2b1b' if i==stage_index else '#a1dabc' if i<stage_index else MUTED)
         self.enable(allowed_actions(state) if not self.pending_submit else set())
         usage=state.get('usage')
         for key in self.usage_labels:
-            self.usage_labels[key].configure(text=str(usage[key])+'%' if usage else '—')
+            value=usage[key] if usage else 0
+            limit=80 if key=='five_hour' else 70
+            self.usage_labels[key].configure(text=str(value)+'%' if usage else '확인 필요',fg='#efbd7d' if usage and (not usage['fresh'] or value>=limit) else INK)
             self.bars[key]['value']=usage[key] if usage else 0
         self.freshness.configure(text=('최신 값' if usage['fresh'] else '갱신 필요')+' · '+str(usage['age_seconds']//60)+'분 전 저장됨' if usage else '사용량 파일을 확인하세요. 남은 토큰을 추정하지 않습니다.')
         approval='전체 기획 승인됨' if state.get('approved') else '전체 기획 미승인'
@@ -274,7 +486,10 @@ class Desktop:
         latest=state.get('results',[])[-1] if state.get('results') else None
         replace_text(self.overview_text,'## '+current+'\n\n'+questions+'\n\n## 최신 판단\n'+(latest['summary'] if latest else '아직 기획 결과가 없습니다.')+'\n\n기획을 승인한 뒤 실행하면 다음 기능으로 이어집니다. 기능 검증 후에는 사용자 코드 리뷰를 기다립니다.')
         replace_text(self.plan_text,'# 전체 기획안\n'+current+'\n\n'+(state.get('document') or '아직 작성된 기획안이 없습니다.')+'\n\n승인 대상: '+str(state.get('candidate_hash') or '없음'))
-        features=state.get('features',[])
+        all_features=state.get('features',[])
+        query=self.feature_filter.get().strip().casefold()
+        features=[f for f in all_features if query in (f['task_id']+' '+f['title']+' '+f['requirements']).casefold()]
+        self.feature_count.configure(text=f'{len(features)} / {len(all_features)}개')
         signature=[(f['task_id'],f['title'],f['requirements'],f.get('acceptance_criteria'),f.get('depends_on')) for f in features],state.get('accepted',[]),state.get('current_feature')
         if signature!=self.last_features:
             old=self.tree.selection()
@@ -298,7 +513,7 @@ class Desktop:
             if job.get('log_file'):jobs.append('실행 기록: '+job['log_file'])
             jobs.append('')
         replace_text(self.requests_text,'# 요청 처리 현황\n\n'+('\n'.join(jobs) or '이 앱에서 보낸 요청이 없습니다.')+'\n\n미완료 문서 전송: '+str(len(state.get('receipts',[])))+'건\n\n앱 재시작 시 이 요청 목록은 초기화됩니다. 실제 프로젝트 상태와 활동 기록은 유지됩니다.')
-        self.footer.configure(text='● 연결됨  ·  마지막 조회 '+datetime.now().strftime('%H:%M:%S')+'  ·  브라우저 / 웹 서버 사용 안 함')
+        self.footer.configure(text='● 연결됨  ·  '+datetime.now().strftime('%H:%M:%S')+' 확인  ·  F5 새로고침 / Ctrl+F 문서 검색')
 
     def feature_selected(self,event=None):
         selection=self.tree.selection()
@@ -312,7 +527,7 @@ class Desktop:
         except ValueError as exc:messagebox.showerror('작업 불가',str(exc),parent=self.root);return
         # Capture the reviewed version now; polling must never change this consent payload.
         dialog=tk.Toplevel(self.root);dialog.title(NAMES[action]);dialog.transient(self.root)
-        dialog.geometry('800x650' if action=='approve' else '640x400');dialog.configure(bg='white');dialog.grab_set()
+        dialog.geometry('800x650' if action=='approve' else '640x400');dialog.configure(bg='#19211e');dialog.grab_set()
         dialog.protocol('WM_DELETE_WINDOW',dialog.destroy)
         self.label(dialog,NAMES[action],size=18,bold=True).pack(anchor='w',padx=24,pady=(20,12))
         self.label(dialog,HELP[action],color=MUTED,wraplength=720 if action=='approve' else 580,justify='left').pack(fill='x',padx=24)
@@ -324,8 +539,8 @@ class Desktop:
             ttk.Checkbutton(dialog,text='전체 기획안과 검토 내용을 확인하고 표시된 버전을 승인합니다.',variable=checked).pack(anchor='w',padx=24,pady=10)
         elif action in TEXT_ACTIONS:
             self.label(dialog,'내용 · 판단 근거',color=MUTED).pack(anchor='w',padx=24,pady=(18,5))
-            editor=tk.Text(dialog,height=6,wrap='word',relief='solid',bd=1,font=('맑은 고딕',10));editor.pack(fill='both',expand=True,padx=24)
-        row=tk.Frame(dialog,bg='white');row.pack(side='bottom',fill='x',padx=24,pady=20)
+            editor=tk.Text(dialog,height=6,wrap='word',relief='solid',bd=1,font=('맑은 고딕',11),bg='#26392f',fg=INK,insertbackground=INK);editor.pack(fill='both',expand=True,padx=24)
+        row=tk.Frame(dialog,bg='#19211e');row.pack(side='bottom',fill='x',padx=24,pady=20)
         def confirm():
             if action=='approve' and not checked.get():messagebox.showinfo('검토 확인','기획 검토 확인란을 선택하세요.',parent=dialog);return
             content=editor.get('1.0','end-1c').strip() if editor else ''
@@ -333,8 +548,8 @@ class Desktop:
                 messagebox.showerror('입력 확인','내용을 1~12,000자로 입력하세요.',parent=dialog);return
             payload['text']=content
             dialog.destroy();self.submit(payload)
-        tk.Button(row,text='취소',command=dialog.destroy,relief='flat',padx=20,pady=9).pack(side='right')
-        tk.Button(row,text=NAMES[action],command=confirm,bg=PURPLE,fg='white',relief='flat',padx=20,pady=9).pack(side='right',padx=10)
+        RoundButton(row,text='취소',command=dialog.destroy,relief='flat',bg='#283a31',fg=INK,padx=20,pady=9).pack(side='right')
+        RoundButton(row,text=NAMES[action],command=confirm,bg=PURPLE,fg='#0a2b1b',relief='flat',padx=20,pady=9).pack(side='right',padx=10)
 
     def submit(self,payload):
         self.pending_submit=True;self.enable(set())
@@ -364,7 +579,7 @@ def instance_handle(identity):
     if not handle:raise OSError('Desktop instance lock failed')
     if error==183:
         kernel.CloseHandle(handle)
-        raise ValueError('한자리 스튜디오가 이미 실행 중입니다. 작업 표시줄에서 기존 창을 열어 주세요.')
+        raise ValueError('한자리가 이미 실행 중입니다. 작업 표시줄에서 기존 창을 열어 주세요.')
     return kernel,handle
 
 
