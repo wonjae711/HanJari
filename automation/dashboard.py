@@ -80,6 +80,9 @@ class Backend:
                     results=[{k: r.get(k) for k in ('stage', 'revision', 'outcome', 'summary', 'evidence', 'review_files', 'artifact')}
                              for r in current.get('results', [])[-12:]],
                     questions=artifact.get('questions', []),
+                    confirmed_constraints=parent['task'].get('confirmed_constraints', []),
+                    proposals=artifact.get('decisions', []),
+                    steering=parent['task'].get('steering', []),
                     receipts=[{'kind': kind, 'status': r['status']} for kind in ('knowledge_receipts', 'document_receipts')
                               for r in parent.get(kind, {}).values() if r['status'] != 'sent'])
         # No config, environment, token or arbitrary filesystem access is exposed.

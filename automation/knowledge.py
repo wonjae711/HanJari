@@ -131,7 +131,7 @@ def record_payload(state):
     if multi.exists(): records.append(('workflow', 'multiproject-guide', multi.read_text(encoding='utf-8')))
     documents = c.ROOT / 'PROJECT-DOCUMENTS.md'
     if documents.exists(): records.append(('workflow', 'project-documents-guide', documents.read_text(encoding='utf-8')))
-    for name in ('DESKTOP.md', 'DASHBOARD.md'):
+    for name in ('DESKTOP.md', 'DASHBOARD.md', 'DESIGN-INTEGRATION.md'):
         guide = c.ROOT / name
         if guide.exists(): records.append(('workflow', name.lower(), guide.read_text(encoding='utf-8')))
     # Obtain actual implementation/review instructions from the runtime prompt builder.

@@ -34,6 +34,41 @@ HELP = {
     'reset-breaker':'반복 실패 원인을 해결한 경우에만 제한을 해제하세요. 원인과 해결 내용을 기록합니다.'}
 
 
+def dark_titlebar(window):
+    """Theme only this app's Windows frame; never change global OS settings.
+
+    DWM attributes: https://learn.microsoft.com/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute
+    Explicit caption/text colors keep the frame dark even with a light OS theme.
+    Unsupported attributes are harmless on older Windows versions.
+    """
+    if os.name!='nt' or not window.winfo_exists():return False
+    try:
+        window.update_idletasks()
+        user32=ctypes.WinDLL('user32')
+        user32.GetAncestor.argtypes=[ctypes.c_void_p,ctypes.c_uint]
+        user32.GetAncestor.restype=ctypes.c_void_p
+        hwnd=user32.GetAncestor(window.winfo_id(),2)
+        if not hwnd:return False
+        dwm=ctypes.WinDLL('dwmapi')
+        dwm.DwmSetWindowAttribute.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_void_p,ctypes.c_uint]
+        dwm.DwmSetWindowAttribute.restype=ctypes.c_long
+        def color(hex_value):
+            r,g,b=(int(hex_value[i:i+2],16) for i in (1,3,5))
+            return r | g<<8 | b<<16
+        results=[]
+        for attribute,value in [(20,1),(34,color(BG)),(35,color(BG)),(36,color(INK))]:
+            data=ctypes.c_uint32(value)
+            results.append(dwm.DwmSetWindowAttribute(hwnd,attribute,ctypes.byref(data),ctypes.sizeof(data)))
+        return results[2]==0
+    except (OSError,tk.TclError):return False
+
+
+def theme_window_frame(window):
+    # Tk can recreate its native wrapper on mapping; apply to the mapped HWND.
+    dark_titlebar(window)
+    window.bind('<Map>',lambda event:dark_titlebar(window) if event.widget==window else None,add='+')
+
+
 def rounded(canvas,x1,y1,x2,y2,r,**options):
     r=min(r,(x2-x1)/2,(y2-y1)/2)
     return canvas.create_polygon(x1+r,y1,x2-r,y1,x2,y1,x2,y1+r,x2,y2-r,x2,y2,x2-r,y2,
@@ -74,7 +109,7 @@ class RoundButton(tk.Canvas):
     def paint(self):
         if not self.winfo_exists():return
         self.delete('all')
-        width=max(self.winfo_width(),int(super().cget('width')));height=int(super().cget('height'))
+        width=self.winfo_width() if self.winfo_width()>1 else int(super().cget('width'));height=int(super().cget('height'))
         disabled=self.options['state']=='disabled'
         fill=self.options['activebackground'] if self.hover and not disabled else self.options['bg']
         foreground=self.options['disabledforeground'] if disabled else self.options['activeforeground'] if self.hover else self.options['fg']
@@ -208,6 +243,7 @@ class Desktop:
         self.style.configure('Horizontal.TProgressbar', background='#73e2bb', troughcolor='#283a31', borderwidth=0, thickness=6)
         self.buttons = {}
         self.build()
+        theme_window_frame(root)
         root.bind('<F5>',lambda e:self.refresh())
         root.bind('<Control-f>',self.focus_search)
         if poll:
@@ -527,6 +563,7 @@ class Desktop:
         except ValueError as exc:messagebox.showerror('작업 불가',str(exc),parent=self.root);return
         # Capture the reviewed version now; polling must never change this consent payload.
         dialog=tk.Toplevel(self.root);dialog.title(NAMES[action]);dialog.transient(self.root)
+        theme_window_frame(dialog)
         dialog.geometry('800x650' if action=='approve' else '640x400');dialog.configure(bg='#19211e');dialog.grab_set()
         dialog.protocol('WM_DELETE_WINDOW',dialog.destroy)
         self.label(dialog,NAMES[action],size=18,bold=True).pack(anchor='w',padx=24,pady=(20,12))
@@ -596,7 +633,8 @@ def main():
     handle=None
     try:
         handle=instance_handle(str(args.config.resolve()).casefold()+':'+args.mode)
-        app=Desktop(root,Backend(args.config,args.mode))
+        from studio_view import Studio
+        app=Studio(root,Backend(args.config,args.mode))
         root.deiconify();root.mainloop()
     except Exception as exc:
         messagebox.showerror('한자리 스튜디오',str(exc),parent=root)
@@ -604,4 +642,8 @@ def main():
         if handle:handle[0].CloseHandle(handle[1])
 
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    # Share the same widgets/helpers when the view imports desktop from this entry point.
+    import sys
+    sys.modules.setdefault('desktop',sys.modules[__name__])
+    main()
