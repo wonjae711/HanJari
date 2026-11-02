@@ -1,0 +1,4 @@
+# 개발 샘플 데이터는 dev 프로필을 명시적으로 활성화했을 때만 넣는다.
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/devdata

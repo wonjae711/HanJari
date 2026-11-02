@@ -1,0 +1,73 @@
+{
+  "command": "mvnw.cmd -B verify",
+  "exit_code": 0,
+  "started_at_epoch": 1791768592.7603219,
+  "finished_at": "2026-10-12T01:30:17.767341+00:00",
+  "commit": "78d6c55f0e9d9458aa602debdf8bbd5b97ed04ab",
+  "source_sha256": {
+    ".mvn/wrapper/maven-wrapper.properties": "821602a8cceb1f8f5945f80b82b27617ba88b74a8afae230a5df80affcb6a8ab",
+    "mvnw": "cae96cef89ebea3531221f4ae17c23cf8edf67d00eae8306d4186ae1bbed4d02",
+    "mvnw.cmd": "46eedb8419bd14fe70d5bb2916d7b6f51806e51b39d5b76a42610384ca929c1c",
+    "pom.xml": "361b6414644973b87b48e20a982709d4f4a1e3f4fa9a60b7bfee9733d6a4d41e",
+    "src/main/java/com/hanjari/common/ApiErrorResponse.java": "7b3294d834dfa52dca33e2eb9f7e33c58ebd773cc19af4cf38780d4edc2dfddc",
+    "src/main/java/com/hanjari/common/ApiExceptionHandler.java": "53ab625572851a3698bd0c6cfce8eec132208d279d287c8d1e48cf9f1f411370",
+    "src/main/java/com/hanjari/HanjariApplication.java": "c0e8995eaebbd4f69819f744931f755340ab66916061d0e778fe313af5540383",
+    "src/main/java/com/hanjari/movie/AgeRating.java": "a455b721147295eef7e1c73179b2232385fc13bb7ea95852c4e4a26ab16e8464",
+    "src/main/java/com/hanjari/movie/InvalidMovieIdException.java": "cc951e89f25d434db3e3d1ad0457c9cb673a53ebd4ade30b53afce00e266e520",
+    "src/main/java/com/hanjari/movie/Movie.java": "67d90d0b512a54146da310e07e02f3b1b2654af999c317c37520c5ea73e139a5",
+    "src/main/java/com/hanjari/movie/MovieController.java": "25bfcb7fc00293b3c8e833e50ea3f782b8c52434975d8615c20eac93b209908f",
+    "src/main/java/com/hanjari/movie/MovieDetailResponse.java": "c9a672346a59edb97e162be12ecb05e31f384b59c6a7154c01d413490f0e719d",
+    "src/main/java/com/hanjari/movie/MovieIdParser.java": "a828ab299e27490e06b39d3e95b11859b1d1da1fad15a40d5a381ea16e918517",
+    "src/main/java/com/hanjari/movie/MovieNotFoundException.java": "0c77f7eccea29214d5cdd5331312bbdd8c953a26cd0338d510fed8cdb0394402",
+    "src/main/java/com/hanjari/movie/MovieRepository.java": "ff54693ba2d9a85f42fcd6ef10d1b6e6aa61736ec829f4ba51b64ab3ba0a9ea1",
+    "src/main/java/com/hanjari/movie/MovieService.java": "1348049f0a0395fbbfb2bdae057c3e4e6ec6ca2c9ed1c881beae5f0a043556c7",
+    "src/main/resources/application-dev.yml": "e98a323a90b0afa4b52fdd27d2f0f4577e92fe9ce4c81d1b601f377b855a9179",
+    "src/main/resources/application.yml": "4cc36420a5ea56b17e9a93816a617a7bd9e6a164a28580e9871903f16c4e4206",
+    "src/main/resources/db/devdata/V1_1__dev_sample_movies.sql": "7d12daf95bea0421509a5ec787d7759710df4888a4227058382b2456fad28f5b",
+    "src/main/resources/db/migration/V1__create_movies.sql": "42728eda947705ca6713dd2a407c2f95792a362142599612e1c62ad108e2077c",
+    "src/test/java/com/hanjari/movie/MovieApiIT.java": "534939f86f40c3e77117c4947be3496d4041bcb75b246e749cf41ba43765756b",
+    "src/test/java/com/hanjari/movie/MovieControllerTest.java": "c17e3665b1c0b029a84d93163b0b4a8954b745dc1986eb3a95b0d8ec89c077b8",
+    "src/test/java/com/hanjari/movie/MovieIdParserTest.java": "e3f565c72f078715f4d62fe8ae6a120e468dd0df52c075950c5ec0d766a4e0d8",
+    "src/test/java/com/hanjari/movie/MovieServiceTest.java": "6a970bbdabab7219a4c02101105110dc4548d6877fe19b64b9cb6019826aae47"
+  },
+  "suites": [
+    {
+      "suite": "MovieControllerTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "report": "target/surefire-reports/TEST-com.hanjari.movie.MovieControllerTest.xml",
+      "sha256": "c8b1d2d5b9a48cabb4cbf284db04a77c27f57997b78e0d5773989c48004dfa05"
+    },
+    {
+      "suite": "MovieIdParserTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "report": "target/surefire-reports/TEST-com.hanjari.movie.MovieIdParserTest.xml",
+      "sha256": "5243f3fcdb1d224a5e61f97c88270eb3a9e0c8d4a1e64443deee837fa78e8820"
+    },
+    {
+      "suite": "MovieServiceTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "report": "target/surefire-reports/TEST-com.hanjari.movie.MovieServiceTest.xml",
+      "sha256": "2e49e170f5e7ae1e8ffaa14b5faca34b2bc37726853392e80ef2bf221e2d93b5"
+    },
+    {
+      "suite": "MovieApiIT",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "report": "target/failsafe-reports/TEST-com.hanjari.movie.MovieApiIT.xml",
+      "sha256": "dd8cce67a9dd9cef56b6b06cf840f85535310099b9fb4ffe8eda36524288f132"
+    }
+  ],
+  "test_count": 35,
+  "limits": "MockMvc plus real MySQL; no separate HTTP server, load test, or CI run."
+}
