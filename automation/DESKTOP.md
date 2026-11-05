@@ -94,3 +94,9 @@ Tk로는 목업(`HanJari App.dc.html`)의 글꼴·그림자·레이아웃을 재
 왼쪽 **설정**(Ctrl+6)에서 DB 연결 설정과 프로젝트 설정 파일을 관리한다. `.env`, `.env.*`, Spring `src/main/resources` 및 `src/test/resources`의 `application*.yml/yaml/properties`, README·AGENTS·CLAUDE 안내 파일을 찾는다. 존재하는 파일만 **파일 열기**로 VS Code 또는 메모장에 연다. 없는 파일은 상태를 표시하며 임의 생성하지 않는다. 파일을 추가한 뒤 **새로고침**으로 목록을 갱신한다.
 
 목록 API는 파일 경로와 존재 여부만 반환하며 내용은 읽거나 전송하지 않는다. 프로젝트 폴더 밖으로 연결되는 경로는 제외한다. `.env`를 자동으로 읽어 자동화 프로세스에 주입하지 않으므로 테스트 DB 인증은 **DB 연결 설정**에 저장한다. 애플리케이션 자체의 `.env` 지원 여부는 해당 프로젝트 구성에 따른다.
+
+## Codex 사용량 표시
+
+사이드바의 **Codex 사용량**은 Codex에 로그인한 ChatGPT 계정의 Codex 한도를 표시한다. ChatGPT 일반 채팅 전체 사용량이 아니다. 설치된 Codex app-server의 `account/rateLimits/read`로 조회하며 모델 대화나 작업을 생성하지 않는다. 서버가 반환한 기간·사용률·초기화 시간을 표시하고 60초 간격으로 갱신한다. 누락된 값은 0%로 추정하지 않는다. 실패 시 이전 조회 시각과 오류를 함께 표시한다. 추가 실행 차단 기준은 적용하지 않는다.
+
+공식 프로토콜: https://learn.chatgpt.com/docs/app-server

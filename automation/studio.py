@@ -5,6 +5,7 @@ studio_assets/ with `msedge --app` (no address bar, separate profile).
 Opening the window never starts an agent; all actions reuse Backend.submit.
 """
 import argparse
+import codex_usage
 import db_settings
 import ctypes
 import hashlib
@@ -107,9 +108,15 @@ class Studio:
     def __init__(self, backend):
         self.backend = backend
         self.picking = threading.Lock()
+        self.codex_usage = codex_usage.Reader()
 
     def routes(self):
-        return {'/api/register': self.register, '/api/pick': self.pick, '/api/open': self.open, '/api/db-settings': self.database, '/api/settings': self.settings}
+        return {'/api/register': self.register, '/api/pick': self.pick, '/api/open': self.open, '/api/db-settings': self.database, '/api/settings': self.settings, '/api/codex-usage': self.read_codex_usage}
+
+    def read_codex_usage(self, payload):
+        import controller
+        config = controller.read(self.backend.config_path)
+        return self.codex_usage.get(config.get('codex_command', 'codex'))
 
     def settings(self, payload):
         if not isinstance(payload, dict):

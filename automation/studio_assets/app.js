@@ -183,6 +183,7 @@ async function api(path, body) {
 async function connect() {
   const s = await api('/api/session');
   S.token = s.token; S.projects = s.projects;
+  if (!S.codexUsage) refreshCodexUsage();
   if (!S.projects.some((p) => p.id === S.project)) S.project = S.projects[0] ? S.projects[0].id : 'hanjari';
 }
 async function poll() {
@@ -438,7 +439,8 @@ function sidebar(d, sc, narrow) {
           b ? h('span', { class: 'nav-badge', style: { color: b[1], background: b[2] } }, b[0]) : null);
       })),
     h('div', { style: { flex: 1 } }),
-    h('div', { class: 'side-foot' },
+    h('div', { class: 'side-foot', style: { maxHeight: '48vh', overflowY: 'auto' } },
+      codexUsageCard(),
       h('div', { class: 'usage' },
         h('div', { class: 'row-between' }, h('span', { class: 'usage-title' }, 'Claude 사용량'), miniChip(usageChip)),
         bars,
@@ -1089,6 +1091,30 @@ async function registerProject() {
     toast('프로젝트를 추가했어요. AI는 아직 실행하지 않았어요. 진행 현황에서 실행을 눌러 기획을 시작하세요.');
   } catch (e) { S.formError = '등록하지 못했어요: ' + e.message; } finally { S.sending = false; render(); }
 }
+async function refreshCodexUsage() {
+  if (!S.token || S.codexLoading) return;
+  S.codexLoading = true; render();
+  try { S.codexUsage = await api('/api/codex-usage', {}); }
+  catch (e) { S.codexUsage = { ...(S.codexUsage || {}), error: e.status === 404 ? '앱을 종료하고 다시 열어 주세요.' : '조회 실패 · 연결을 확인하세요.' }; }
+  finally { S.codexLoading = false; render(); }
+}
+function codexUsageCard() {
+  const value = S.codexUsage;
+  const label = minutes => minutes == null ? '사용 한도' : minutes % 1440 === 0 ? (minutes / 1440) + '일' : minutes % 60 === 0 ? (minutes / 60) + '시간' : minutes + '분';
+  return h('div', { class: 'usage' },
+    h('div', { class: 'row-between' }, h('span', { class: 'usage-title' }, 'Codex 사용량'),
+      h('button', { class: 'btn ghost sm', disabled: S.codexLoading, onclick: refreshCodexUsage }, S.codexLoading ? '조회 중' : '갱신')),
+    h('span', { class: 'meta' }, 'ChatGPT 구독 · 일반 채팅과 구분'),
+    value && value.error ? h('span', { style: { color: C.amber, fontSize: '12px' } }, value.error) : null,
+    value ? (value.buckets || []).map(b => h('div', null,
+      h('span', { class: 'meta' }, b.name),
+      b.windows.map(w => h('div', { style: { marginTop: '6px' } },
+        h('div', { class: 'bar-head' }, h('span', null, label(w.minutes)), h('span', null, w.used + '% 사용')),
+        h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: { width: w.used + '%', background: value.error ? C.text3 : C.mint } })),
+        w.resets_at ? h('span', { class: 'meta' }, '초기화 ' + new Date(w.resets_at * 1000).toLocaleString('ko-KR')) : null)))) : null,
+    !value || !(value.buckets || []).length ? h('span', { class: 'meta' }, S.codexLoading ? '한도 확인 중…' : '확인된 사용량 없음') : null,
+    value && value.checked_at ? h('span', { class: 'meta' }, hm(new Date(value.checked_at * 1000).toISOString()) + ' 조회 · 60초 간격 갱신') : null);
+}
 async function loadSettings() {
   const project = S.project;
   S.settingsLoading = true; S.settingsError = ''; render();
@@ -1283,3 +1309,5 @@ render();
 poll();
 setInterval(poll, 3000);
 setInterval(() => { if (S.data && S.data.usage) render(); }, 60000);
+
+setInterval(refreshCodexUsage, 60000);
