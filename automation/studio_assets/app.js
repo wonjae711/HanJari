@@ -1100,7 +1100,7 @@ async function loadSettings() {
 }
 function settingsScreen(d) {
   const value = S.settings && S.settings.project === S.project ? S.settings : null;
-  return h('div', { class: 'screen', style: { display: 'flex', flexDirection: 'column', gap: '20px' } },
+  return h('div', { class: 'screen settings-screen', 'data-scroll': 'settings', style: { display: 'flex', flexDirection: 'column', gap: '20px' } },
     h('section', { class: 'card' }, h('h2', null, '프로젝트 설정'),
       h('p', { class: 'muted' }, '이 프로젝트를 실행하기 전에 필요한 연결 정보와 설정 파일을 관리하세요.'),
       h('div', { class: 'row-between' }, h('span', { class: 'mono' }, value ? value.folder : '설정 정보를 불러오는 중…'),

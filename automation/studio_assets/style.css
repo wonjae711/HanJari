@@ -269,3 +269,11 @@ svg { flex: none; display: block; }
 .fact { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; padding: 9px 12px; border-top: 1px solid #222C28; font-size: 13.5px; }
 .fact:first-child { border-top: none; }
 .toast { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60; max-width: 560px; display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 10px; background: #222C28; border: 1px solid #34423C; box-shadow: 0 12px 32px rgba(0, 0, 0, .45); font-size: 13.5px; line-height: 1.5; animation: hjin .16s ease-out; }
+
+/* Keep configuration cards reachable in windowed mode. */
+.settings-screen { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 24px; scrollbar-gutter: stable; }
+.settings-screen > .card { flex-shrink: 0; min-width: 0; }
+.settings-screen .row-between { flex-wrap: wrap; gap: 12px; }
+.settings-screen .row-between > div, .settings-screen .row-between > span { min-width: 0; overflow-wrap: anywhere; }
+.settings-screen .mono { overflow-wrap: anywhere; }
+.settings-screen .btn { flex-shrink: 0; }
