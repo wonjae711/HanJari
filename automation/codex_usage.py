@@ -1,5 +1,6 @@
 """Read quota metadata using Codex's documented app-server protocol; no turns."""
 import json
+from controller import executable
 import math
 import queue
 import shutil
@@ -26,11 +27,10 @@ def normalize(result):
     return {'buckets':output,'checked_at':time.time()}
 
 
-def fetch(command='codex',timeout=20):
-    binary=shutil.which(command)
-    if not binary:raise ValueError('Codex 실행 파일을 찾지 못했습니다.')
+def fetch(command='codex',timeout=20,env=None):
+    binary=executable(command)
     proc=subprocess.Popen([binary,'app-server'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,
-                          stderr=subprocess.DEVNULL,text=True,encoding='utf-8',
+                          stderr=subprocess.DEVNULL,env=env,text=True,encoding='utf-8',
                           creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
     messages=queue.Queue()
     def read():
@@ -67,10 +67,11 @@ class Reader:
     def __init__(self):
         self.lock=threading.Lock();self.last=None;self.at=0;self.error=None
 
-    def get(self,command):
+    def get(self,command,env=None):
         with self.lock:
             if time.monotonic()-self.at>=60:
-                try:self.last=fetch(command);self.error=None
+                try:self.last=fetch(command,env=env);self.error=None
+                except ValueError as exc:self.error=str(exc)
                 except Exception:self.error='사용량 조회 실패 · Codex 로그인과 연결을 확인하세요.'
                 self.at=time.monotonic()
             return dict(self.last or {'buckets':[],'checked_at':None},error=self.error)

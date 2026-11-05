@@ -18,7 +18,7 @@ class UsageTests(unittest.TestCase):
         value={'buckets':[],'checked_at':123}
         with patch.object(u,'fetch',return_value=value) as fetch,patch.object(u.time,'monotonic',return_value=100):
             self.assertIsNone(reader.get('codex')['error']);reader.get('codex');fetch.assert_called_once()
-        with patch.object(u,'fetch',side_effect=ValueError('internal')),patch.object(u.time,'monotonic',return_value=161):
+        with patch.object(u,'fetch',side_effect=RuntimeError('internal')),patch.object(u.time,'monotonic',return_value=161):
             result=reader.get('codex')
             self.assertEqual(result['checked_at'],123);self.assertTrue(result['error'])
             self.assertNotIn('internal',result['error'])
@@ -32,3 +32,9 @@ class UsageTests(unittest.TestCase):
         methods=[json.loads(line)['method'] for line in sink.saved.splitlines()]
         self.assertEqual(methods,['initialize','initialized','account/rateLimits/read'])
         proc.wait.assert_called_once();self.assertTrue(proc.stdout.closed)
+
+    def test_reader_passes_login_environment(self):
+        reader=u.Reader()
+        with patch.object(u,'fetch',return_value={'buckets':[],'checked_at':123}) as fetch,patch.object(u.time,'monotonic',return_value=100):
+            reader.get('codex',env={'CODEX_HOME':'test-home'})
+        fetch.assert_called_once_with('codex',env={'CODEX_HOME':'test-home'})

@@ -116,7 +116,9 @@ class Studio:
     def read_codex_usage(self, payload):
         import controller
         config = controller.read(self.backend.config_path)
-        return self.codex_usage.get(config.get('codex_command', 'codex'))
+        env = controller.child_environment(config)
+        env = {k: v for k, v in env.items() if not k.startswith('HANJARI_') and k not in config.get('test_db_env', [])}
+        return self.codex_usage.get(config.get('codex_command', 'codex'), env=env)
 
     def settings(self, payload):
         if not isinstance(payload, dict):
