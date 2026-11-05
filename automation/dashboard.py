@@ -1,5 +1,7 @@
 """Loopback-only GUI for the existing workspace CLI; no agents on page load."""
 import argparse
+import os
+import db_settings
 import json
 import math
 import re
@@ -143,8 +145,12 @@ class Backend:
         try:
             directory.mkdir(exist_ok=True)
             path = directory/(job['id']+'.log')
+            env = None
+            if job['action'] == 'run':
+                profile, _, _ = self.profile(job['project'])
+                env = db_settings.environment(profile, os.environ)
             with path.open('wb') as log:
-                result = subprocess.run(args, cwd=ROOT.parent, stdout=log, stderr=subprocess.STDOUT,
+                result = subprocess.run(args, cwd=ROOT.parent, stdout=log, stderr=subprocess.STDOUT, env=env,
                                         creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             with self.mutex:
                 job.update(status='completed' if result.returncode == 0 else 'failed', exit_code=result.returncode,

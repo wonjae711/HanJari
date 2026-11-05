@@ -5,6 +5,7 @@ studio_assets/ with `msedge --app` (no address bar, separate profile).
 Opening the window never starts an agent; all actions reuse Backend.submit.
 """
 import argparse
+import db_settings
 import ctypes
 import hashlib
 import os
@@ -108,7 +109,25 @@ class Studio:
         self.picking = threading.Lock()
 
     def routes(self):
-        return {'/api/register': self.register, '/api/pick': self.pick, '/api/open': self.open}
+        return {'/api/register': self.register, '/api/pick': self.pick, '/api/open': self.open, '/api/db-settings': self.database}
+
+    def database(self, payload):
+        if not isinstance(payload, dict):
+            raise ValueError('잘못된 요청입니다.')
+        key = payload.get('project')
+        self.backend.profile(key)  # registered project only
+        operation = payload.get('operation', 'read')
+        with self.backend.mutex:
+            if operation == 'read':
+                return db_settings.public(key)
+            if any(j['status'] == 'running' for j in self.backend.jobs):
+                raise ValueError('현재 요청이 끝난 후 DB 설정을 변경하세요.')
+            if operation == 'save':
+                return db_settings.save(key, payload)
+            if operation == 'delete':
+                db_settings.path_for(key).unlink(missing_ok=True)
+                return {'saved': False, 'url': '', 'username': ''}
+            raise ValueError('지원하지 않는 DB 설정 요청입니다.')
 
     def register(self, payload):
         from project_registration import register_project

@@ -436,6 +436,7 @@ function sidebar(d, sc, narrow) {
           b ? h('span', { class: 'nav-badge', style: { color: b[1], background: b[2] } }, b[0]) : null);
       })),
     h('div', { style: { flex: 1 } }),
+    h('button', { class: 'nav-btn', onclick: openDatabase }, ic('plug', null, 17), '테스트 DB 설정'),
     h('div', { class: 'side-foot' },
       h('div', { class: 'usage' },
         h('div', { class: 'row-between' }, h('span', { class: 'usage-title' }, 'Claude 사용량'), miniChip(usageChip)),
@@ -1087,6 +1088,26 @@ async function registerProject() {
     toast('프로젝트를 추가했어요. AI는 아직 실행하지 않았어요. 진행 현황에서 실행을 눌러 기획을 시작하세요.');
   } catch (e) { S.formError = '등록하지 못했어요: ' + e.message; } finally { S.sending = false; render(); }
 }
+async function openDatabase() {
+  const project = S.project;
+  try {
+    const value = await api('/api/db-settings', { project, operation: 'read' });
+    if (project !== S.project) return;
+    S.db = { project, saved: value.saved, url: value.url || ('jdbc:mysql://localhost:3306/' + (project === 'hanjari' ? 'hanjari_test' : project.replace(/-/g, '_') + '_test') + '?allowPublicKeyRetrieval=true&useSSL=false&characterEncoding=UTF-8'), username: value.username || '', password: '' };
+    set({ modal: 'database' });
+  } catch (e) { toast(e.message, 'warn'); }
+}
+async function saveDatabase(operation) {
+  if (S.dbSaving) return;
+  const db = S.db;
+  S.dbSaving = true; render();
+  try {
+    await api('/api/db-settings', { ...db, operation });
+    db.password = ''; S.modal = null;
+    toast(operation === 'delete' ? '저장된 DB 연결 정보를 삭제했어요.' : 'DB 연결 정보를 암호화해 저장했어요. 다음 실행부터 적용돼요.');
+  } catch (e) { toast(e.message, 'warn'); }
+  finally { S.dbSaving = false; render(); }
+}
 async function openPath(kind, path) { try { await api('/api/open', { kind, path, project: S.project }); } catch (e) { toast(e.message, 'warn'); } }
 function copy(text) { navigator.clipboard.writeText(text).then(() => toast('경로를 복사했어요.'), () => toast('복사하지 못했어요.', 'warn')); }
 async function reconnect() {
@@ -1100,7 +1121,7 @@ async function reconnect() {
 /* ------------------------------------------------------------------ dialogs */
 function dialog(d) {
   if (!S.modal || !d) return null;
-  const close = () => set({ modal: null });
+  const close = () => { if (S.db) S.db.password = ''; set({ modal: null }); };
   const cancel = act('취소', null, 'secondary', close);
   const cur = curFeature(d);
   const text = S.modalText.trim();
@@ -1110,6 +1131,21 @@ function dialog(d) {
   const submit = (action, extra, label, icon, kind) => async () => { const ok = await send(action, extra); if (ok) { S.modal = null; S.changeText = action === 'revise' ? '' : S.changeText; if (action === 'accept-feature' || (action === 'revise' && S.verdict)) { S.verdict = null; S.memo = ''; } render(); } };
   let x = null;
   switch (S.modal) {
+    case 'database': {
+      const db = S.db;
+      if (!db) return null;
+      const field = (key, label, type = 'text') => h('label', { class: 'form-field' },
+        h('span', null, label), h('input', { class: 'input', type, value: db[key], autocomplete: 'off',
+          'data-k': 'db-' + key, oninput: e => { db[key] = e.target.value; } }));
+      x = { icon: 'plug', color: C.mint, title: projectName(S.projects.find(p => p.id === db.project)) + ' · 테스트 DB',
+        body: '준비한 테스트 전용 DB의 연결 정보를 입력하세요. 저장 후 다음 자동화 실행부터 적용됩니다.',
+        input: [field('url', 'JDBC 주소'), field('username', 'DB 계정'), field('password', db.saved ? '비밀번호 · 비워두면 기존 값 유지' : '비밀번호', 'password'),
+          h('p', { class: 'muted' }, '이 Windows 사용자 계정으로 암호화해 저장합니다. 저장은 실제 DB 접속 확인이나 DB 생성을 수행하지 않습니다.')],
+        actions: [cancel, db.saved ? act('저장 정보 삭제', 'trash', S.dbSaving ? 'disabled' : 'danger', () => saveDatabase('delete')) : null,
+          act(S.dbSaving ? '저장 중…' : '암호화 저장', 'check', S.dbSaving ? 'disabled' : 'primary', () => saveDatabase('save'))].filter(Boolean) };
+      break;
+    }
+
     case 'stop':
       x = { icon: 'pause', color: C.amber, title: '중단을 요청할까요?', body: '지금 하고 있는 단계를 마친 뒤 멈춰요. 진행 중인 단계를 즉시 끊지는 않아요.',
         facts: [['현재 단계', STAGE_NAME[d.stage] || d.stage], ['담당', d.stage === 'implement' ? 'Claude Code' : 'Codex'], ['멈추는 시점', '현재 단계 완료 후']],
@@ -1207,7 +1243,7 @@ function paint() {
 /* ------------------------------------------------------------------ boot */
 window.addEventListener('resize', () => { const narrow = window.innerWidth < 1280; if (narrow !== (S.w < 1280)) { S.w = window.innerWidth; render(); } else S.w = window.innerWidth; });
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { if (S.modal) set({ modal: null }); else if (S.projOpen) set({ projOpen: false }); }
+  if (e.key === 'Escape') { if (S.modal) { if (S.db) S.db.password = ''; set({ modal: null }); } else if (S.projOpen) set({ projOpen: false }); }
   if (e.ctrlKey && !e.shiftKey && !e.altKey && /^[1-5]$/.test(e.key)) { e.preventDefault(); S.adding = false; go(NAV[+e.key - 1][0]); }
   if (e.ctrlKey && e.key.toLowerCase() === 'f' && S.screen === 'plan' && !S.adding) { e.preventDefault(); const el = document.querySelector('[data-k="planq"]'); if (el) el.focus(); }
   if (e.key === 'F5') { e.preventDefault(); poll(); toast('상태를 새로 불러왔어요.'); }
