@@ -59,7 +59,7 @@ const NAMES = {
   sync: 'Notion 동기화', 'accept-feature': '기능 리뷰 완료', 'retry-sync': '전송 재시도 허용', 'reset-breaker': '반복 방지 해제',
 };
 const NAV = [['overview', '진행 현황', 'layout'], ['plan', '기획과 결정', 'doc'], ['features', '기능별 업무', 'list'],
-  ['review', '리뷰와 검증', 'pr'], ['activity', '활동·요청·복구', 'history']];
+  ['review', '리뷰와 검증', 'pr'], ['activity', '활동·요청·복구', 'history'], ['settings', '설정', 'plug']];
 const TITLES = Object.fromEntries(NAV.map(([k, l]) => [k, l]));
 const LIMITS = { five_hour: 80, seven_day: 70 };
 
@@ -166,6 +166,7 @@ function toast(msg, kind) {
 function go(screen) {
   document.querySelectorAll('[data-scroll]').forEach((el) => { S.scroll[el.dataset.scroll] = el.scrollTop; });
   set({ screen, projOpen: false });
+  if (screen === 'settings') loadSettings();
   requestAnimationFrame(() => requestAnimationFrame(() => document.querySelectorAll('[data-scroll]').forEach((el) => {
     if (S.scroll[el.dataset.scroll] != null) el.scrollTop = S.scroll[el.dataset.scroll];
   })));
@@ -195,6 +196,7 @@ async function poll() {
     S.data = data; S.lastOk = new Date();
     if (S.conn !== 'ok') { S.conn = 'ok'; render(); }
     if (changed) { pin(); render(); }
+    if (S.screen === 'settings' && (!S.settings || S.settings.project !== S.project) && !S.settingsLoading && !S.settingsError) loadSettings();
   } catch (e) {
     if (S.conn !== 'failed') { S.conn = 'failed'; render(); }
     if (e.status === 403) S.token = null;
@@ -436,7 +438,6 @@ function sidebar(d, sc, narrow) {
           b ? h('span', { class: 'nav-badge', style: { color: b[1], background: b[2] } }, b[0]) : null);
       })),
     h('div', { style: { flex: 1 } }),
-    h('button', { class: 'nav-btn', onclick: openDatabase }, ic('plug', null, 17), '테스트 DB 설정'),
     h('div', { class: 'side-foot' },
       h('div', { class: 'usage' },
         h('div', { class: 'row-between' }, h('span', { class: 'usage-title' }, 'Claude 사용량'), miniChip(usageChip)),
@@ -1088,6 +1089,33 @@ async function registerProject() {
     toast('프로젝트를 추가했어요. AI는 아직 실행하지 않았어요. 진행 현황에서 실행을 눌러 기획을 시작하세요.');
   } catch (e) { S.formError = '등록하지 못했어요: ' + e.message; } finally { S.sending = false; render(); }
 }
+async function loadSettings() {
+  const project = S.project;
+  S.settingsLoading = true; S.settingsError = ''; render();
+  try {
+    const value = await api('/api/settings', { project });
+    if (S.project === project) S.settings = value;
+  } catch (e) { if (S.project === project) S.settingsError = e.message; }
+  finally { if (S.project === project) { S.settingsLoading = false; render(); } }
+}
+function settingsScreen(d) {
+  const value = S.settings && S.settings.project === S.project ? S.settings : null;
+  return h('div', { class: 'screen', style: { display: 'flex', flexDirection: 'column', gap: '20px' } },
+    h('section', { class: 'card' }, h('h2', null, '프로젝트 설정'),
+      h('p', { class: 'muted' }, '이 프로젝트를 실행하기 전에 필요한 연결 정보와 설정 파일을 관리하세요.'),
+      h('div', { class: 'row-between' }, h('span', { class: 'mono' }, value ? value.folder : '설정 정보를 불러오는 중…'),
+        h('button', { class: 'btn secondary', onclick: loadSettings }, '새로고침')),
+      S.settingsError ? h('p', { role: 'alert', style: { color: C.coral } }, S.settingsError) : null),
+    h('section', { class: 'card' }, h('div', { class: 'row-between' }, h('h3', null, '테스트 DB 연결'),
+      h('span', { class: 'meta' }, value ? value.database_error || (value.database_saved ? '암호화 저장됨 · 접속 미검증' : '앱에 저장된 설정 없음') : '확인 중')),
+      h('p', { class: 'muted' }, '프로젝트별 주소·계정·비밀번호를 Windows 사용자 계정으로 암호화해 저장합니다.'),
+      h('button', { class: 'btn primary', onclick: openDatabase }, 'DB 연결 설정')),
+    h('section', { class: 'card' }, h('h3', null, '설정 파일'),
+      h('p', { class: 'muted' }, '파일은 VS Code 또는 메모장에서 엽니다. 수정 후 저장하고 다시 실행하세요. .env는 프로젝트가 직접 읽도록 구성되어 있어야 하며, 한자리가 자동으로 불러오지는 않습니다.'),
+      value ? value.files.map(f => h('div', { class: 'row-between', style: { padding: '12px 0', borderBottom: '1px solid ' + C.line, gap: '12px' } },
+        h('div', null, h('div', { class: 'mono' }, f.path), h('span', { class: 'meta' }, f.kind + ' · ' + (f.exists ? '파일 있음' : '파일 없음'))),
+        h('button', { class: 'btn secondary sm', disabled: !f.exists, onclick: () => f.exists && openPath('file', f.path) }, '파일 열기'))) : h('p', null, S.settingsLoading ? '파일 목록 확인 중…' : '새로고침으로 목록을 확인하세요.')));
+}
 async function openDatabase() {
   const project = S.project;
   try {
@@ -1103,7 +1131,7 @@ async function saveDatabase(operation) {
   S.dbSaving = true; render();
   try {
     await api('/api/db-settings', { ...db, operation });
-    db.password = ''; S.modal = null;
+    db.password = ''; S.modal = null; loadSettings();
     toast(operation === 'delete' ? '저장된 DB 연결 정보를 삭제했어요.' : 'DB 연결 정보를 암호화해 저장했어요. 다음 실행부터 적용돼요.');
   } catch (e) { toast(e.message, 'warn'); }
   finally { S.dbSaving = false; render(); }
@@ -1214,7 +1242,7 @@ function paint() {
   if (S.adding) body = addProjectScreen();
   else if (!d) body = S.conn === 'failed' ? emptyState('plug', '제어기에 연결할 수 없어요', '한자리 창을 닫았다가 다시 열어 주세요. 문제가 계속되면 automation/config.json을 확인하세요.') : h('div', { class: 'boot' }, '상태를 불러오는 중…');
   else if (S.screen === 'overview') body = overview(d, sc, narrow);
-  else body = { plan: planScreen, features: featuresScreen, review: reviewScreen, activity: activityScreen }[S.screen](d, narrow);
+  else body = { plan: planScreen, features: featuresScreen, review: reviewScreen, activity: activityScreen, settings: settingsScreen }[S.screen](d, narrow);
   const tree = h('div', { class: 'root', onclick: (e) => { if (S.projOpen && !e.target.closest('.proj-wrap')) set({ projOpen: false }); } },
     h('div', { class: 'body' },
       sidebar(d, sc, narrow),
@@ -1244,7 +1272,7 @@ function paint() {
 window.addEventListener('resize', () => { const narrow = window.innerWidth < 1280; if (narrow !== (S.w < 1280)) { S.w = window.innerWidth; render(); } else S.w = window.innerWidth; });
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { if (S.modal) { if (S.db) S.db.password = ''; set({ modal: null }); } else if (S.projOpen) set({ projOpen: false }); }
-  if (e.ctrlKey && !e.shiftKey && !e.altKey && /^[1-5]$/.test(e.key)) { e.preventDefault(); S.adding = false; go(NAV[+e.key - 1][0]); }
+  if (e.ctrlKey && !e.shiftKey && !e.altKey && /^[1-6]$/.test(e.key)) { e.preventDefault(); S.adding = false; go(NAV[+e.key - 1][0]); }
   if (e.ctrlKey && e.key.toLowerCase() === 'f' && S.screen === 'plan' && !S.adding) { e.preventDefault(); const el = document.querySelector('[data-k="planq"]'); if (el) el.focus(); }
   if (e.key === 'F5') { e.preventDefault(); poll(); toast('상태를 새로 불러왔어요.'); }
 });

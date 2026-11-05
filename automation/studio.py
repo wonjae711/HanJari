@@ -109,7 +109,35 @@ class Studio:
         self.picking = threading.Lock()
 
     def routes(self):
-        return {'/api/register': self.register, '/api/pick': self.pick, '/api/open': self.open, '/api/db-settings': self.database}
+        return {'/api/register': self.register, '/api/pick': self.pick, '/api/open': self.open, '/api/db-settings': self.database, '/api/settings': self.settings}
+
+    def settings(self, payload):
+        if not isinstance(payload, dict):
+            raise ValueError('잘못된 요청입니다.')
+        profile, _, _ = self.backend.profile(payload.get('project'))
+        base = Path(profile['project_dir']).resolve()
+        candidates = {'.env', '.env.example', 'README.md', 'AGENTS.md', 'CLAUDE.md'}
+        for pattern in ('.env.*', 'src/main/resources/application*.yml',
+                        'src/main/resources/application*.yaml', 'src/main/resources/application*.properties',
+                        'src/test/resources/application*.yml', 'src/test/resources/application*.yaml',
+                        'src/test/resources/application*.properties'):
+            for path in base.glob(pattern):
+                candidates.add(path.relative_to(base).as_posix())
+        files = []
+        for name in sorted(candidates):
+            target = (base / name).resolve()
+            if not inside(target, base):
+                continue
+            files.append({'path': name, 'exists': target.is_file(),
+                          'kind': '환경변수' if name.startswith('.env') else '애플리케이션' if 'application' in name else '프로젝트 안내'})
+        try:
+            saved = db_settings.public(profile['id'])['saved']
+            error = None
+        except ValueError:
+            saved = False
+            error = '저장된 DB 설정을 읽지 못했습니다.'
+        return {'project': profile['id'], 'folder': str(base), 'files': files,
+                'database_saved': saved, 'database_error': error}
 
     def database(self, payload):
         if not isinstance(payload, dict):
