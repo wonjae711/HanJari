@@ -61,3 +61,22 @@ python -m unittest discover -s automation -p "test*.py"
 ## Claude Design 목업 반영 (2026-11-02)
 
 화면을 목업 기준의 5개 메뉴와 공통 상태 표시, 사이드바 사용량, 문서/승인 패널 구조로 개편했다. Ctrl+1~5로 이동하며 작은 창에서는 문서 목차를 접는다. 새 기획 버전은 자동으로 승인하지 않고 명시적 재검토를 기다린다. 상세 반영 범위와 제약은 [디자인 반영 안내](DESIGN-INTEGRATION.md)를 참고한다.
+
+## 데스크톱에서 프로젝트 추가 (2026-11-02)
+
+왼쪽 프로젝트 선택 아래 **+ 프로젝트 추가**를 누른다. 이름, 고유 ID, GitHub origin이 설정된 로컬 저장소 폴더, Notion 결과 페이지, 아이디어를 입력한다. Notion 페이지는 링크 또는 UUID를 받는다. 원본 페이지, 업무 접두사, 기존 테스트 기준 JSON도 지정할 수 있다. 기존 테스트가 있는 저장소는 회귀 기준 JSON이 필요하다.
+
+기존 CLI 등록 검증과 등록 잠금을 그대로 사용한다. 중복 ID·저장소 등록, 원본과 결과가 동일한 Notion 페이지는 거부한다. 성공하면 새 프로젝트가 선택되지만 AI는 실행하지 않는다. 사용자가 다음 작업 실행을 눌러 기획을 시작하고 기존 승인 절차를 따른다.
+
+이 버튼은 저장소·GitHub origin·Notion 페이지를 생성하지 않는다. 준비된 자원을 연결한다. Notion 접근 권한은 실행·동기화 시 확인한다. 현재 개발 실행 지원은 Java/Spring Boot/Maven/MySQL이며, 다른 기술 스택 실행기는 후속 범위다.
+
+## 목업 그대로의 화면 — Edge 앱 창 (2026-11-02)
+
+Tk로는 목업(`HanJari App.dc.html`)의 글꼴·그림자·레이아웃을 재현할 수 없어, 같은 화면을 HTML/CSS로 구현하고 Edge 앱 모드 창(주소창 없는 독립 창)으로 띄운다. 추가 Python 패키지는 없다.
+
+- 실행: 바탕화면 **한자리 스튜디오** 또는 `python .\automation\studio.py`. 바로가기는 `install-studio.ps1`이 `studio.py`로 바꾼다(기존 대상이 desktop.py/studio.py일 때만 교체). 이전 Tk 앱은 `python .\automation\desktop.py`로 계속 실행할 수 있다.
+- 구조: `studio.py`가 `dashboard.py`의 서버를 127.0.0.1의 임의 포트로 띄우고 `msedge --app`을 전용 프로필(`.runtime-studio/edge-profile`)로 연다. 창을 닫으면 서버도 종료되며, 진행 중인 요청이 있으면 끝날 때까지 기다린 뒤 종료한다. Tk 앱과 같은 중복 실행 잠금을 쓴다.
+- 화면: `studio_assets/`(index.html·style.css·app.js). 목업의 색·간격·글꼴(Pretendard, JetBrains Mono — OFL, `studio_assets/fonts`)을 그대로 쓰고, 값은 모두 `/api/state`의 실제 상태에서 가져온다. 데모 데이터와 데모 상태 전환 패널은 없다.
+- 명령: 기존 `/api/action` 허용 목록(workspace.py)만 사용한다. 추가 경로는 프로젝트 등록(`/api/register`, 기존 등록 검증 재사용), 폴더·JSON 선택 창(`/api/pick`), 파일 열기(`/api/open`, 프로젝트 폴더 안 파일과 앱 로그만, VS Code 또는 메모장으로 열고 실행하지 않음)이며 모두 세션 토큰이 필요하다.
+- 목업과 다른 점: 기획 버전은 `r{리비전}`으로 표시한다. 결정 선택지 라디오, 파일별 +/- 줄 수, 인수 기준별 테스트 매핑, GitHub PR 링크는 실제 데이터가 없어 표시하지 않는다. 리뷰의 「수정 요청」은 기존 revise(새 기획 버전) 경로로, 「보류」는 아이디어 기록으로 남긴다. 창 제목 표시줄은 Edge 기본 제목 표시줄을 쓴다.
+- 검증: `test_studio.py`(정적 파일 허용 목록, 토큰, 파일 열기 범위) 포함 146개 회귀 테스트.

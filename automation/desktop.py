@@ -8,6 +8,8 @@ import queue
 import re
 import threading
 import tkinter as tk
+from scrollbar import SlimScrollbar
+from list_style import apply_list_style
 from tkinter import ttk, messagebox
 from tkinter import font as tkfont
 from datetime import datetime
@@ -241,6 +243,7 @@ class Desktop:
         self.style.configure('Treeview.Heading', font=('맑은 고딕', 10, 'bold'), background='#24332c', foreground=INK, padding=9)
         self.style.map('Treeview', background=[('selected', '#305b49')], foreground=[('selected', '#dcfff0')])
         self.style.configure('Horizontal.TProgressbar', background='#73e2bb', troughcolor='#283a31', borderwidth=0, thickness=6)
+        apply_list_style(root, self.style)
         self.buttons = {}
         self.build()
         theme_window_frame(root)
@@ -285,7 +288,7 @@ class Desktop:
         frame.pack(fill='both',expand=True)
         text=tk.Text(frame,wrap='word',relief='flat',borderwidth=0,padx=22,pady=18,
                      font=('맑은 고딕',11),background='#19211e',foreground=INK,spacing3=8,selectbackground='#365946',state='disabled')
-        scrollbar=ttk.Scrollbar(frame,command=text.yview)
+        scrollbar=SlimScrollbar(frame,command=text.yview)
         text.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side='right',fill='y');text.pack(side='left',fill='both',expand=True)
         text.tag_configure('h1',font=('맑은 고딕',17,'bold'),foreground='#a3f2d2',spacing1=10,spacing3=14)
@@ -329,7 +332,7 @@ class Desktop:
         self.views={key:tk.Frame(self.content,bg='#19211e') for key in self.nav}
         overview_host=self.views['overview']
         self.overview_canvas=tk.Canvas(overview_host,bg='#19211e',highlightthickness=0)
-        overview_scroll=ttk.Scrollbar(overview_host,command=self.overview_canvas.yview)
+        overview_scroll=SlimScrollbar(overview_host,command=self.overview_canvas.yview)
         self.overview_canvas.configure(yscrollcommand=overview_scroll.set)
         overview_scroll.pack(side='right',fill='y');self.overview_canvas.pack(side='left',fill='both',expand=True)
         overview=tk.Frame(self.overview_canvas,bg='#19211e')
@@ -389,7 +392,7 @@ class Desktop:
         self.tree=ttk.Treeview(treeframe,columns=('id','title','status'),show='headings',height=7,selectmode='browse')
         for key,title,width in [('id','업무',90),('title','기능',410),('status','상태',140)]:
             self.tree.heading(key,text=title);self.tree.column(key,width=width,minwidth=60,stretch=key=='title')
-        sb=ttk.Scrollbar(treeframe,command=self.tree.yview);self.tree.configure(yscrollcommand=sb.set)
+        sb=SlimScrollbar(treeframe,command=self.tree.yview);self.tree.configure(yscrollcommand=sb.set)
         sb.pack(side='right',fill='y');self.tree.pack(fill='x',expand=True)
         self.tree.bind('<<TreeviewSelect>>',self.feature_selected)
         self.feature_text=self.reader(self.views['features'])

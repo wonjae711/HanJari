@@ -64,12 +64,22 @@ class Backend:
         with self.mutex:
             data['jobs'] = [dict(j) for j in self.jobs if j['project'] == key][-12:]
             data['busy'] = any(j['status'] == 'running' for j in self.jobs)
+        data['project'].update(folder=Path(profile.get('project_dir', '')).name)
         if not store.path.exists(): return dict(data, stage='not_started', results=[], events=[], features=[], document='')
         parent = c.read(store.path)
         current = c.read(w.current_store(store).path)
         plans = [r for r in parent['results'] if r['stage'] == 'plan' and r['revision'] == parent['revision']]
         artifact = plans[-1].get('artifact', {}) if plans else {}
         approved = parent.get('approved_plan')
+        versions = []
+        for revision in sorted({r['revision'] for r in parent['results'] if r['stage'] == 'plan'}):
+            written = [r for r in parent['results'] if r['revision'] == revision and r['stage'] == 'plan']
+            reviews = [r for r in parent['results'] if r['revision'] == revision and r['stage'] == 'spec_review']
+            versions.append({'revision': revision, 'written_at': written[-1].get('finished_at'),
+                             'review_outcome': reviews[-1]['outcome'] if reviews else None,
+                             'reviewed_at': reviews[-1].get('finished_at') if reviews else None})
+        data.update(plan_versions=versions, approved_at=(approved or {}).get('at'),
+                    approved_revision=(approved or {}).get('revision'))
         data.update({k: current.get(k) for k in ('stage', 'active', 'running', 'revision', 'run_guard')})
         data.update(parent_stage=parent['stage'], parent_revision=parent['revision'],
                     pause_requested=parent.get('pause_requested', False), approved=bool(approved),
@@ -77,7 +87,7 @@ class Backend:
                     features=artifact.get('features', []), accepted=list(parent.get('accepted_features', {})),
                     current_feature=current['task'].get('task_id') if current['id'] != parent['id'] else None,
                     events=(parent.get('events', []) + (current.get('events', []) if current['id'] != parent['id'] else []))[-25:],
-                    results=[{k: r.get(k) for k in ('stage', 'revision', 'outcome', 'summary', 'evidence', 'review_files', 'artifact')}
+                    results=[{k: r.get(k) for k in ('stage', 'revision', 'outcome', 'summary', 'evidence', 'review_files', 'artifact', 'finished_at')}
                              for r in current.get('results', [])[-12:]],
                     questions=artifact.get('questions', []),
                     confirmed_constraints=parent['task'].get('confirmed_constraints', []),
@@ -143,11 +153,19 @@ class Backend:
             with self.mutex: job.update(status='failed', finished_at=c.now())
 
 
+DASHBOARD_FILES = {'/': ('dashboard_assets/index.html', 'text/html; charset=utf-8'),
+                   '/app.js': ('dashboard_assets/app.js', 'text/javascript; charset=utf-8'),
+                   '/style.css': ('dashboard_assets/style.css', 'text/css; charset=utf-8')}
+
+
 class Server(ThreadingHTTPServer):
     daemon_threads = True
-    def __init__(self, port, backend):
+    def __init__(self, port, backend, files=None, routes=None):
         super().__init__(('127.0.0.1', port), Handler)
         self.backend = backend
+        # Fixed allow-list of static files (relative to ROOT) and extra POST handlers.
+        self.files = files or DASHBOARD_FILES
+        self.routes = routes or {}
         self.token = secrets.token_urlsafe(32)
         self.origin = 'http://127.0.0.1:' + str(self.server_port)
 
@@ -174,12 +192,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.trusted(): return self.reply(403, {'error': '로컬 화면에서 접속하세요.'})
         url = urlsplit(self.path)
-        files = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
-                 '/style.css': ('style.css', 'text/css; charset=utf-8')}
+        files = self.server.files
         try:
             if url.path in files:
                 name, kind = files[url.path]
-                return self.reply(200, (ROOT/'dashboard_assets'/name).read_bytes(), kind)
+                return self.reply(200, (ROOT/name).read_bytes(), kind)
             if url.path == '/api/session':
                 return self.reply(200, {'token': self.server.token, 'projects': self.server.backend.projects()})
             if url.path == '/api/state':
@@ -192,12 +209,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.trusted() or not secrets.compare_digest(self.headers.get('X-Dashboard-Token', ''), self.server.token):
             return self.reply(403, {'error': '화면을 새로고침한 뒤 다시 시도하세요.'})
-        if self.path != '/api/action': return self.reply(404, {'error': '잘못된 경로입니다.'})
+        if self.path != '/api/action' and self.path not in self.server.routes:
+            return self.reply(404, {'error': '잘못된 경로입니다.'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
             if not 0 < size <= 64000 or self.headers.get('Content-Type') != 'application/json':
                 return self.reply(400, {'error': '잘못된 요청 형식입니다.'})
             payload = json.loads(self.rfile.read(size))
+            if self.path in self.server.routes:
+                return self.reply(200, self.server.routes[self.path](payload))
             return self.reply(202, self.server.backend.submit(payload))
         except ValueError as exc: return self.reply(409, {'error': str(exc)})
         except Exception: return self.reply(500, {'error': '요청을 처리하지 못했습니다. 설정 및 실행 상태를 확인하세요.'})

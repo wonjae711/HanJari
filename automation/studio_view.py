@@ -4,6 +4,8 @@ No demo data, remote design runtime, fonts or simulated model completions.
 """
 import hashlib
 import tkinter as tk
+from scrollbar import SlimScrollbar
+from list_style import OutlineList
 from tkinter import ttk, messagebox
 from datetime import datetime
 import desktop as ui
@@ -74,7 +76,7 @@ class ScrollBody(tk.Frame):
     def __init__(self,parent,bg=ui.BG):
         super().__init__(parent,bg=bg)
         self.canvas=tk.Canvas(self,bg=bg,highlightthickness=0)
-        scrollbar=ttk.Scrollbar(self,command=self.canvas.yview)
+        scrollbar=SlimScrollbar(self,command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side='right',fill='y');self.canvas.pack(side='left',fill='both',expand=True)
         self.body=tk.Frame(self.canvas,bg=bg)
@@ -122,6 +124,7 @@ class Studio(ui.Desktop):
         self.project_value=tk.StringVar();self.project_keys=[]
         self.selector=ttk.Combobox(self.sidebar,textvariable=self.project_value,state='readonly',width=19)
         self.selector.pack(fill='x',padx=12);self.selector.bind('<<ComboboxSelected>>',self.change_project)
+        self.link_button(self.sidebar,"+ 프로젝트 추가",self.add_project).pack(fill="x",padx=12,pady=(8,0))
         self.nav={}
         for i,(key,label) in enumerate(NAV,1):
             button=ui.RoundButton(self.sidebar,text=label,command=lambda k=key:self.show(k),anchor='w',bg='#0B100E',fg=ui.MUTED,padx=12,pady=11)
@@ -152,6 +155,13 @@ class Studio(ui.Desktop):
         self.views={key:tk.Frame(self.content,bg=ui.BG) for key,_ in NAV}
         self.make_overview();self.make_plan();self.make_features();self.make_review();self.make_activity()
         self.show('overview')
+
+    def add_project(self):
+        from project_registration import ProjectDialog
+        dialog=getattr(self,"project_dialog",None)
+        if dialog and dialog.window.winfo_exists():
+            dialog.window.lift();return
+        self.project_dialog=ProjectDialog(self)
 
     def make_overview(self):
         scroll=ScrollBody(self.views['overview']);scroll.pack(fill='both',expand=True);self.overview_canvas=scroll.canvas
@@ -207,7 +217,7 @@ class Studio(ui.Desktop):
         self.plan_panes.pack(fill='both',expand=True)
         self.toc_frame=tk.Frame(self.plan_panes,bg=CARD)
         self.label(self.toc_frame,'문서 목차',size=10,bold=True).pack(anchor='w',padx=12,pady=12)
-        self.toc=tk.Listbox(self.toc_frame,bg=CARD,fg=ui.MUTED,selectbackground='#263D32',selectforeground=ui.INK,relief='flat',bd=0,highlightthickness=0,exportselection=False,font=('맑은 고딕',9))
+        self.toc=OutlineList(self.toc_frame)
         self.toc.pack(fill='both',expand=True,padx=6,pady=6);self.toc.bind('<<ListboxSelect>>',self.jump_heading)
         self.plan_panes.add(self.toc_frame,width=180,minsize=120)
         doc=tk.Frame(self.plan_panes,bg=PANEL);self.plan_panes.add(doc,minsize=260,stretch='always')
@@ -238,7 +248,7 @@ class Studio(ui.Desktop):
         self.tree=ttk.Treeview(listing,columns=('id','title','status'),show='headings',selectmode='browse')
         for key,title,width in [('id','업무',75),('title','기능',210),('status','상태',90)]:
             self.tree.heading(key,text=title);self.tree.column(key,width=width,minwidth=55,stretch=key=='title')
-        scroll=ttk.Scrollbar(listing,command=self.tree.yview);self.tree.configure(yscrollcommand=scroll.set)
+        scroll=SlimScrollbar(listing,command=self.tree.yview);self.tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side='right',fill='y');self.tree.pack(fill='both',expand=True)
         self.tree.bind('<<TreeviewSelect>>',self.feature_selected)
         detail=tk.Frame(panes,bg=PANEL);panes.add(detail,minsize=270,stretch='always');self.feature_text=self.reader(detail)
