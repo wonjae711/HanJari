@@ -1,8 +1,4 @@
-# Local execution state and credentials
-automation/config.json
-automation/.runtime*/
-**/__pycache__/
-*.pyc
+# Local credentials
 .env
 .env.*
 !.env.example
@@ -17,6 +13,3 @@ build/
 
 # Local agent settings
 .claude/settings.local.json
-
-# Local Claude Design source exports; native implementation does not load them.
-/HanJari app UI mockups/
