@@ -1104,7 +1104,6 @@ function codexUsageCard() {
   return h('div', { class: 'usage' },
     h('div', { class: 'row-between' }, h('span', { class: 'usage-title' }, 'Codex 사용량'),
       h('button', { class: 'btn ghost sm', disabled: S.codexLoading, onclick: refreshCodexUsage }, S.codexLoading ? '조회 중' : '갱신')),
-    h('span', { class: 'meta' }, 'ChatGPT 구독 · 일반 채팅과 구분'),
     value && value.error ? h('span', { style: { color: C.amber, fontSize: '12px' } }, value.error) : null,
     value ? (value.buckets || []).map(b => h('div', null,
       h('span', { class: 'meta' }, b.name),
