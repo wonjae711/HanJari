@@ -1101,20 +1101,26 @@ async function refreshCodexUsage() {
   finally { S.codexLoading = false; render(); }
 }
 function codexUsageCard() {
-  const value = S.codexUsage;
-  const label = minutes => minutes == null ? '사용 한도' : minutes % 1440 === 0 ? (minutes / 1440) + '일' : minutes % 60 === 0 ? (minutes / 60) + '시간' : minutes + '분';
+  const value = S.codexUsage, buckets = (value && value.buckets) || [];
+  const age = value && value.checked_at ? Math.max(0, Date.now() / 1000 - value.checked_at) : null;
+  const stale = !!(value && value.error) || (age != null && age > 120);
+  const reached = buckets.some(b => b.windows.some(w => w.used >= 100));
+  const badge = !buckets.length ? chip('unknown', '값 없음') : stale ? chip('stop_requested', '오래됨') : reached ? chip('failed', '한도 도달') : chip('passed', '정상');
+  const label = minutes => minutes === 10080 ? '주간' : minutes == null ? '사용 한도' : minutes % 1440 === 0 ? (minutes / 1440) + '일' : minutes % 60 === 0 ? (minutes / 60) + '시간' : minutes + '분';
   return h('div', { class: 'usage' },
-    h('div', { class: 'row-between' }, h('span', { class: 'usage-title' }, 'Codex 사용량'),
-      h('button', { class: 'btn ghost sm', disabled: S.codexLoading, onclick: refreshCodexUsage }, S.codexLoading ? '조회 중' : '갱신')),
-    value && value.error ? h('span', { style: { color: C.amber, fontSize: '12px' } }, value.error) : null,
-    value ? (value.buckets || []).map(b => h('div', null,
-      h('span', { class: 'meta' }, b.name),
-      b.windows.map(w => h('div', { style: { marginTop: '6px' } },
-        h('div', { class: 'bar-head' }, h('span', null, label(w.minutes)), h('span', null, w.used + '% 사용')),
-        h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: { width: w.used + '%', background: value.error ? C.text3 : C.mint } })),
-        w.resets_at ? h('span', { class: 'meta' }, '초기화 ' + new Date(w.resets_at * 1000).toLocaleString('ko-KR')) : null)))) : null,
-    !value || !(value.buckets || []).length ? h('span', { class: 'meta' }, S.codexLoading ? '한도 확인 중…' : '확인된 사용량 없음') : null,
-    value && value.checked_at ? h('span', { class: 'meta' }, hm(new Date(value.checked_at * 1000).toISOString()) + ' 조회 · 60초 간격 갱신') : null);
+    h('div', { class: 'row-between' }, h('span', { class: 'usage-title' }, 'Codex 사용량'), miniChip(badge)),
+    buckets.map(b => h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+      buckets.length > 1 ? h('span', { class: 'meta' }, b.name) : null,
+      b.windows.map(w => h('div', { style: { display: 'flex', flexDirection: 'column', gap: '5px' } },
+        h('div', { class: 'bar-head', title: w.resets_at ? '초기화 ' + new Date(w.resets_at * 1000).toLocaleString('ko-KR') : '' },
+          h('span', { class: 'muted' }, label(w.minutes)),
+          h('span', { style: { color: stale ? C.text2 : w.used >= 100 ? C.coral : C.text, fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }, w.used + '%')),
+        h('div', { class: 'bar' }, h('div', { class: 'bar-fill', style: { width: w.used + '%', background: stale ? '#4E605A' : w.used >= 100 ? C.coral : C.mint } })),
+        w.resets_at ? h('span', { style: { fontSize: '11px', color: C.text3 } }, '초기화 ' + new Date(w.resets_at * 1000).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })) : null)))),
+    h('div', { class: 'row-between' },
+      h('div', { class: 'usage-upd' }, ic('clock', null, 13), age != null ? hm(new Date(value.checked_at * 1000).toISOString()) + ' 갱신 · ' + ago(age) : '갱신 기록 없음'),
+      h('button', { class: 'link-btn', style: { padding: '0', minWidth: '20px' }, title: '사용량 갱신', 'aria-label': 'Codex 사용량 갱신', disabled: S.codexLoading, onclick: refreshCodexUsage }, ic(S.codexLoading ? 'loader' : 'refresh', C.text3, 13, !!S.codexLoading))),
+    value && value.error ? h('div', { style: { fontSize: '12px', lineHeight: 1.5, color: C.amber } }, value.error) : null);
 }
 const PROMPT_KINDS = [['design', 'Claude Design 목업'], ['review', '외부 코드 리뷰'], ['test', '테스트 계획'], ['handoff', '외부 세션 인계']];
 async function loadPrompts() {
