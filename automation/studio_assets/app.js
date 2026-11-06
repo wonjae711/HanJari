@@ -59,7 +59,7 @@ const NAMES = {
   sync: 'Notion 동기화', 'accept-feature': '기능 리뷰 완료', 'retry-sync': '전송 재시도 허용', 'reset-breaker': '반복 방지 해제',
 };
 const NAV = [['overview', '진행 현황', 'layout'], ['plan', '기획과 결정', 'doc'], ['features', '기능별 업무', 'list'],
-  ['review', '리뷰와 검증', 'pr'], ['activity', '활동·요청·복구', 'history'], ['settings', '설정', 'plug']];
+  ['review', '리뷰와 검증', 'pr'], ['activity', '활동·요청·복구', 'history'], ['settings', '설정', 'plug'], ['prompts', '프롬프트', 'doc']];
 const TITLES = Object.fromEntries(NAV.map(([k, l]) => [k, l]));
 const LIMITS = { five_hour: 80, seven_day: 70 };
 
@@ -167,6 +167,7 @@ function go(screen) {
   document.querySelectorAll('[data-scroll]').forEach((el) => { S.scroll[el.dataset.scroll] = el.scrollTop; });
   set({ screen, projOpen: false });
   if (screen === 'settings') loadSettings();
+  if (screen === 'prompts') loadPrompts();
   requestAnimationFrame(() => requestAnimationFrame(() => document.querySelectorAll('[data-scroll]').forEach((el) => {
     if (S.scroll[el.dataset.scroll] != null) el.scrollTop = S.scroll[el.dataset.scroll];
   })));
@@ -197,6 +198,7 @@ async function poll() {
     S.data = data; S.lastOk = new Date();
     if (S.conn !== 'ok') { S.conn = 'ok'; render(); }
     if (changed) { pin(); render(); }
+    if (S.screen === 'prompts') loadPrompts();
     if (S.screen === 'settings' && (!S.settings || S.settings.project !== S.project) && !S.settingsLoading && !S.settingsError) loadSettings();
   } catch (e) {
     if (S.conn !== 'failed') { S.conn = 'failed'; render(); }
@@ -453,7 +455,7 @@ function sidebar(d, sc, narrow) {
 function projectName(p) { return !p ? '프로젝트' : p.id === 'hanjari' ? '영화 예매 MVP' : p.title; }
 function switchProject(id) {
   localStorage.setItem('hj.project', id);
-  Object.assign(S, { project: id, data: null, pinned: null, projOpen: false, adding: false, screen: 'overview', approveChecked: false, featSel: null, verdict: null, memo: '', fixed: {}, planQ: '' });
+  Object.assign(S, { promptNotes: '', promptSelected: null, promptError: '', project: id, data: null, pinned: null, projOpen: false, adding: false, screen: 'overview', approveChecked: false, featSel: null, verdict: null, memo: '', fixed: {}, planQ: '' });
   render(); poll();
 }
 
@@ -1114,6 +1116,56 @@ function codexUsageCard() {
     !value || !(value.buckets || []).length ? h('span', { class: 'meta' }, S.codexLoading ? '한도 확인 중…' : '확인된 사용량 없음') : null,
     value && value.checked_at ? h('span', { class: 'meta' }, hm(new Date(value.checked_at * 1000).toISOString()) + ' 조회 · 60초 간격 갱신') : null);
 }
+const PROMPT_KINDS = [['design', 'Claude Design 목업'], ['review', '외부 코드 리뷰'], ['test', '테스트 계획'], ['handoff', '외부 세션 인계']];
+async function loadPrompts() {
+  const project = S.project;
+  if (S.promptsLoading) return;
+  S.promptsLoading = true;
+  try {
+    const value = await api('/api/prompts', { project });
+    if (S.project === project) { S.promptLibrary = { ...value, project }; S.promptError = ''; }
+  } catch (e) { if (S.project === project) S.promptError = e.status === 404 ? '앱을 종료하고 다시 실행해 주세요.' : e.message; }
+  finally { S.promptsLoading = false; render(); }
+}
+async function generatePrompt() {
+  if (S.promptSending) return;
+  const project = S.project;
+  S.promptSending = true; render();
+  try {
+    await api('/api/prompts', { project, operation: 'generate', kind: S.promptKind || 'design', notes: S.promptNotes || '' });
+    toast('Codex에 프롬프트 작성을 요청했어요. 완료되면 목록에 저장됩니다.');
+    S.promptSelected = null; await loadPrompts(); poll();
+  } catch (e) { toast(e.message, 'warn'); }
+  finally { S.promptSending = false; render(); }
+}
+function downloadPrompt(record) {
+  const url = URL.createObjectURL(new Blob([record.prompt], { type: 'text/markdown;charset=utf-8' }));
+  const a = document.createElement('a'); a.href = url; a.download = S.project + '-' + record.kind + '-' + record.id + '.md'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function promptsScreen(d) {
+  const library = S.promptLibrary && S.promptLibrary.project === S.project ? S.promptLibrary : { records: [], jobs: [] };
+  const running = library.jobs.some(j => j.status === 'running');
+  const failure = [...library.jobs].reverse().find(j => j.status === 'failed');
+  const selected = library.records.find(r => r.id === S.promptSelected) || library.records[0];
+  return h('div', { class: 'settings-screen', 'data-scroll': 'prompts', style: { display: 'flex', flexDirection: 'column', gap: '20px' } },
+    h('section', { class: 'card' }, h('h2', null, '외부 세션용 프롬프트'),
+      h('p', { class: 'muted' }, '선택한 프로젝트의 최신 기획 또는 등록 아이디어를 바탕으로 Codex가 작성합니다. 버튼을 누를 때 한 번 실행되며 Codex 사용량이 발생합니다.'),
+      h('label', null, '프롬프트 용도', h('select', { class: 'input', value: S.promptKind || 'design', onchange: e => set({ promptKind: e.target.value }) }, PROMPT_KINDS.map(([key, title]) => h('option', { value: key, selected: (S.promptKind || 'design') === key }, title)))),
+      h('textarea', { class: 'textarea', 'data-k': 'prompt-notes', rows: 3, value: S.promptNotes || '', placeholder: '예: 예매 화면 3개, 모바일 우선, 밝은 테마. 추가 요청은 선택 사항입니다.', oninput: e => { S.promptNotes = e.target.value; } }),
+      h('div', { class: 'row-between' }, h('button', { class: 'btn primary', disabled: running || S.promptSending || busy(d) || S.conn !== 'ok', onclick: generatePrompt }, running ? 'Codex 작성 중…' : 'Codex로 작성'),
+        h('button', { class: 'btn secondary', onclick: loadPrompts }, '목록 새로고침')),
+      S.promptError || failure ? h('p', { style: { color: C.amber } }, S.promptError || failure.error || '이전 작성 요청이 실패했습니다.') : null),
+    h('section', { class: 'card' }, h('h3', null, '보관한 프롬프트'),
+      library.records.length ? library.records.map(r => h('button', { class: 'btn secondary', style: { textAlign: 'left', marginBottom: '6px' }, onclick: () => set({ promptSelected: r.id }) }, r.title + ' · ' + when(r.created_at) + (r.mode === 'mock' ? ' · 모의 결과' : ''))) : h('p', { class: 'muted' }, '아직 저장된 프롬프트가 없습니다.')),
+    selected ? h('section', { class: 'card' }, h('h3', null, selected.title),
+      h('p', { class: 'meta' }, (selected.revision ? '기획 r' + selected.revision : '등록 아이디어') + (selected.approved ? ' · 승인된 기획 기준' : ' · 승인 전 초안 기준')),
+      selected.plan_hash && selected.plan_hash !== d.candidate_hash ? h('p', { style: { color: C.amber } }, '현재 기획과 다른 버전으로 작성됐습니다. 사용 전에 내용을 확인하세요.') : null,
+      h('div', { class: 'row-between' }, h('button', { class: 'btn primary', onclick: () => copy(selected.prompt) }, '프롬프트 복사'), h('button', { class: 'btn secondary', onclick: () => downloadPrompt(selected) }, 'Markdown 다운로드')),
+      h('pre', { class: 'log', style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginTop: '12px' } }, selected.prompt)) : null,
+    h('section', { class: 'card' }, h('h3', null, 'Claude Design에서 활용하기'),
+      h('p', { class: 'muted' }, '목업 프롬프트를 복사해 Claude의 Design 대화에 붙여넣으세요. 생성된 디자인은 검토 후 프로젝트로 가져옵니다. Claude Code의 /design 및 /design-sync 연동도 공식 지원되지만, 한자리에서 자동 전송·동기화하는 기능은 아직 연결하지 않았습니다.')));
+}
 async function loadSettings() {
   const project = S.project;
   S.settingsLoading = true; S.settingsError = ''; render();
@@ -1267,7 +1319,7 @@ function paint() {
   if (S.adding) body = addProjectScreen();
   else if (!d) body = S.conn === 'failed' ? emptyState('plug', '제어기에 연결할 수 없어요', '한자리 창을 닫았다가 다시 열어 주세요. 문제가 계속되면 automation/config.json을 확인하세요.') : h('div', { class: 'boot' }, '상태를 불러오는 중…');
   else if (S.screen === 'overview') body = overview(d, sc, narrow);
-  else body = { plan: planScreen, features: featuresScreen, review: reviewScreen, activity: activityScreen, settings: settingsScreen }[S.screen](d, narrow);
+  else body = { plan: planScreen, features: featuresScreen, review: reviewScreen, activity: activityScreen, settings: settingsScreen, prompts: promptsScreen }[S.screen](d, narrow);
   const tree = h('div', { class: 'root', onclick: (e) => { if (S.projOpen && !e.target.closest('.proj-wrap')) set({ projOpen: false }); } },
     h('div', { class: 'body' },
       sidebar(d, sc, narrow),
@@ -1297,7 +1349,7 @@ function paint() {
 window.addEventListener('resize', () => { const narrow = window.innerWidth < 1280; if (narrow !== (S.w < 1280)) { S.w = window.innerWidth; render(); } else S.w = window.innerWidth; });
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { if (S.modal) { if (S.db) S.db.password = ''; set({ modal: null }); } else if (S.projOpen) set({ projOpen: false }); }
-  if (e.ctrlKey && !e.shiftKey && !e.altKey && /^[1-6]$/.test(e.key)) { e.preventDefault(); S.adding = false; go(NAV[+e.key - 1][0]); }
+  if (e.ctrlKey && !e.shiftKey && !e.altKey && /^[1-7]$/.test(e.key)) { e.preventDefault(); S.adding = false; go(NAV[+e.key - 1][0]); }
   if (e.ctrlKey && e.key.toLowerCase() === 'f' && S.screen === 'plan' && !S.adding) { e.preventDefault(); const el = document.querySelector('[data-k="planq"]'); if (el) el.focus(); }
   if (e.key === 'F5') { e.preventDefault(); poll(); toast('상태를 새로 불러왔어요.'); }
 });
