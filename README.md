@@ -43,6 +43,8 @@ try {
 powershell -NoProfile -File .\scripts\test-mysql.ps1
 ```
 
+HJ-002부터 통합 테스트 접속 가드, 데이터 정리 규칙, 독립 트랜잭션 도구가 추가됐다. 자세한 내용은 [HJ-002 테스트 기반](docs/HJ-002-test-foundation.md)을 참고한다. 새 테이블을 추가할 때는 `TestDataCleaner.TABLES_CHILD_FIRST`에 FK 자식 → 부모 순서로 등록한다.
+
 전체 검증은 `hanjari_test.movies` 데이터를 비우고 시험 데이터를 생성한다. 테스트 시작 전에 접속 스키마가 `hanjari_test`인지 확인한다. DB 설정이 없으면 통합 테스트는 실패하며 건너뛰지 않는다.
 
 ## 리뷰
