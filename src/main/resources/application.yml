@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: hanjari
+  # 접속 정보는 환경변수로만 받는다. 기본값을 두지 않아 다른 DB로 잘못 연결되지 않게 한다.
+  datasource:
+    url: ${HANJARI_DB_URL}
+    username: ${HANJARI_DB_USERNAME}
+    password: ${HANJARI_DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration
+
+server:
+  error:
+    include-stacktrace: never
+    include-message: never

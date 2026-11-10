@@ -1,8 +1,4 @@
-# Local execution state and credentials
-automation/config.json
-automation/.runtime*/
-**/__pycache__/
-*.pyc
+# Local credentials
 .env
 .env.*
 !.env.example
