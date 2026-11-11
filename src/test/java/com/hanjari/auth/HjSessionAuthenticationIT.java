@@ -491,10 +491,14 @@ class HjSessionAuthenticationIT {
         assertThat((String) memberOps.json("$.code")).isEqualTo("FORBIDDEN");
         assertThat(member.get("/api/v1/ops/screenings").status()).isEqualTo(403);
 
-        // 대조: 격리된 테스트 DB에서만 역할을 직접 바꾼 fixture는 권한 검사를 통과한다(라우트가 없어 404).
+        // 대조: 격리된 테스트 DB에서만 역할을 직접 바꾼 fixture는 권한 검사를 통과한다.
+        // HJ-004부터 운영 라우트가 있으므로 빈 본문은 입력 검증(400)까지 도달하고 아무것도 저장하지 않는다.
         jdbcTemplate.update("UPDATE members SET role = 'OPERATOR' WHERE id = ?", memberId);
         Browser operator = loggedIn("plain_member", PASSWORD);
-        assertThat(operator.post("/api/v1/ops/movies", "{}").status()).isEqualTo(404);
+        Reply operatorOps = operator.post("/api/v1/ops/movies", "{}");
+        assertThat(operatorOps.status()).isEqualTo(400);
+        assertThat((String) operatorOps.json("$.code")).isEqualTo("INVALID_REQUEST");
+        assertThat(count("movies")).isZero();
     }
 
     // helpers -----------------------------------------------------------------------------------------
