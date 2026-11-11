@@ -22,8 +22,13 @@ import java.util.TreeSet;
  */
 public final class TestDataCleaner {
 
-    /** FK 자식 테이블이 먼저 오도록 유지한다. */
-    public static final List<String> TABLES_CHILD_FIRST = List.of("movies");
+    /**
+     * FK 자식 테이블이 먼저 오도록 유지한다. HJ-003: Spring Session 테이블(속성 → 세션)과 members 추가.
+     * Spring Session 테이블 이름은 대문자다. lower_case_table_names 설정에 따라 information_schema가 소문자로 보고할 수 있어
+     * 등록 여부는 대소문자를 구분하지 않고 비교한다.
+     */
+    public static final List<String> TABLES_CHILD_FIRST =
+            List.of("SPRING_SESSION_ATTRIBUTES", "SPRING_SESSION", "members", "movies");
 
     /** 정리 대상에서 제외하는 관리 테이블. */
     public static final Set<String> PRESERVED_TABLES = Set.of("flyway_schema_history");
@@ -57,11 +62,15 @@ public final class TestDataCleaner {
                              + "WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'")) {
             while (rs.next()) {
                 String table = rs.getString(1);
-                if (!TABLES_CHILD_FIRST.contains(table) && !PRESERVED_TABLES.contains(table)) {
+                if (!containsIgnoreCase(TABLES_CHILD_FIRST, table) && !containsIgnoreCase(PRESERVED_TABLES, table)) {
                     result.add(table);
                 }
             }
         }
         return result;
+    }
+
+    private static boolean containsIgnoreCase(java.util.Collection<String> names, String table) {
+        return names.stream().anyMatch(name -> name.equalsIgnoreCase(table));
     }
 }

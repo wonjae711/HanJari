@@ -135,7 +135,10 @@ class HjMysqlFoundationIT {
         assertThat(first.success).isTrue();
         assertThat(first.initialSchemaVersion).as("no prior schema version").isNull();
         assertThat(first.migrationsExecuted).isEqualTo(fresh.info().applied().length).isPositive();
-        assertThat(tablesInSchema()).containsExactlyInAnyOrder("flyway_schema_history", "movies");
+        // HJ-003(V2)부터 회원·세션 테이블이 함께 생성된다. 초기 데이터로 계정을 만들지 않는다.
+        assertThat(tablesInSchema()).map(String::toLowerCase).containsExactlyInAnyOrder(
+                "flyway_schema_history", "movies", "members", "spring_session", "spring_session_attributes");
+        assertThat(count("members")).isZero();
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '1' AND success = 1", Integer.class))
                 .isEqualTo(1);
