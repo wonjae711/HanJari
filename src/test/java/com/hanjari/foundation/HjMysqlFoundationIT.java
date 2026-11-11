@@ -136,8 +136,11 @@ class HjMysqlFoundationIT {
         assertThat(first.initialSchemaVersion).as("no prior schema version").isNull();
         assertThat(first.migrationsExecuted).isEqualTo(fresh.info().applied().length).isPositive();
         // HJ-003(V2)부터 회원·세션 테이블이 함께 생성된다. 초기 데이터로 계정을 만들지 않는다.
+        // HJ-004(V3)부터 상영관·좌석·회차·회차 좌석 테이블이 생성된다. 초기 데이터(상영관·좌석 포함)는 넣지 않는다.
         assertThat(tablesInSchema()).map(String::toLowerCase).containsExactlyInAnyOrder(
-                "flyway_schema_history", "movies", "members", "spring_session", "spring_session_attributes");
+                "flyway_schema_history", "movies", "members", "spring_session", "spring_session_attributes",
+                "theaters", "seats", "screenings", "screening_seats");
+        assertThat(count("theaters") + count("seats") + count("screenings")).isZero();
         assertThat(count("members")).isZero();
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '1' AND success = 1", Integer.class))
@@ -164,7 +167,9 @@ class HjMysqlFoundationIT {
                 "SELECT column_name, data_type, is_nullable, character_maximum_length FROM information_schema.columns "
                         + "WHERE table_schema = DATABASE() AND table_name = 'movies' ORDER BY ordinal_position"))
                 .extracting(row -> row.get("COLUMN_NAME") + ":" + row.get("DATA_TYPE") + ":" + row.get("IS_NULLABLE"))
-                .containsExactly("id:bigint:NO", "title:varchar:NO", "runtime_minutes:int:NO", "age_rating:varchar:NO");
+                // 기존 네 열은 그대로이고 HJ-004(V3)가 운영 수정 충돌 검출용 version을 뒤에 추가했다.
+                .containsExactly("id:bigint:NO", "title:varchar:NO", "runtime_minutes:int:NO", "age_rating:varchar:NO",
+                        "version:bigint:NO");
         assertThat(jdbcTemplate.queryForList(
                 "SELECT constraint_name FROM information_schema.check_constraints WHERE constraint_schema = DATABASE()",
                 String.class)).contains("ck_movies_runtime_positive", "ck_movies_age_rating");

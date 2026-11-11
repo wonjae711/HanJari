@@ -111,7 +111,9 @@ public class SecurityConfig {
                 .addFilterBefore(new LocalOriginFilter(allowedOrigins), CsrfFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/error").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/movies/**").permitAll()
+                        // HJ-004: 비회원 공개 조회(영화 목록·상세, 날짜별 회차, 회차 좌석).
+                        .requestMatchers(HttpMethod.GET, "/api/v1/movies", "/api/v1/movies/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/screenings", "/api/v1/screenings/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/signup", "/api/v1/auth/login").permitAll()
                         .requestMatchers("/api/v1/ops/**").hasRole("OPERATOR")

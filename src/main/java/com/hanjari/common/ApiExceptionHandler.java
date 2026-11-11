@@ -27,6 +27,8 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
     private static final String AUTH_PACKAGE = "com.hanjari.auth";
+    private static final String CATALOG_PACKAGE = "com.hanjari.catalog";
+    private static final String OPERATIONS_PACKAGE = "com.hanjari.operations";
 
     @ExceptionHandler(InvalidMovieIdException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidMovieId(InvalidMovieIdException ex) {
@@ -68,6 +70,14 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             AuthFailurePolicy.record(outcome, "HANDLER");
             return error(outcome.status(), outcome.code(), outcome.message());
         }
+        if (handledByPackage(request, CATALOG_PACKAGE) || handledByPackage(request, OPERATIONS_PACKAGE)) {
+            // HJ-004 공개 조회·운영 API: 일시적 DB 장애(데드락·잠금 대기 초과 등)는 전체 롤백 후 503, 그 밖은 500.
+            // 로그에는 고정 이벤트만 남기고 예외 객체·메시지·SQL·요청 값을 넘기지 않는다.
+            AuthFailurePolicy.Outcome outcome = AuthFailurePolicy.classify(ex);
+            log.warn("event=CATALOG_REQUEST_FAILED category={} status={}", outcome.category(),
+                    outcome.status().value());
+            return error(outcome.status(), outcome.code(), outcome.message());
+        }
         log.error("Unhandled exception while processing request", ex);
         return error(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "요청을 처리하지 못했습니다.");
     }
@@ -77,12 +87,16 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
      * 적용한다. 라우팅 결과 자체를 기준으로 하므로 경로 표기(인코딩 등)에 따른 우회가 없다.
      */
     private static boolean handledByAuthController(HttpServletRequest request) {
+        return handledByPackage(request, AUTH_PACKAGE);
+    }
+
+    private static boolean handledByPackage(HttpServletRequest request, String basePackage) {
         Object handler = request.getAttribute(HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE);
         if (!(handler instanceof HandlerMethod handlerMethod)) {
             return false;
         }
         String packageName = handlerMethod.getBeanType().getPackageName();
-        return packageName.equals(AUTH_PACKAGE) || packageName.startsWith(AUTH_PACKAGE + ".");
+        return packageName.equals(basePackage) || packageName.startsWith(basePackage + ".");
     }
 
     private static ResponseEntity<ApiErrorResponse> error(HttpStatus status, String code, String message) {

@@ -17,6 +17,10 @@ Java 17 / Spring Boot 4.1.1 / Maven 3.9.11 / MySQL을 사용한다.
 
 `GET /api/v1/auth/csrf`, `POST /api/v1/auth/signup`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/me`. 상태 변경 요청에는 허용된 로컬 `Origin`(기본 `http://localhost:8080`)과 `X-CSRF-TOKEN` 헤더가 필요하다. 세션 쿠키(`HANJARI_SESSION`)는 로컬 HTTP 전제로 Secure 없이 발급된다. **비밀번호 복구 기능은 없다.** 자세한 내용은 [HJ-003 회원·세션](docs/HJ-003-auth-session.md)을 참고한다.
 
+### 영화·회차·좌석 조회와 최소 운영 API (HJ-004)
+
+비회원 공개 조회: `GET /api/v1/movies`, `GET /api/v1/screenings?movieId=&date=`(한국 날짜), `GET /api/v1/screenings/{id}/seats`. 운영자 전용: `POST/PATCH /api/v1/ops/movies`, `POST/PATCH/DELETE /api/v1/ops/screenings`. `dev` 프로필은 합성 영화·상영관·좌석을 멱등 적용하며 계정은 만들지 않는다. 자세한 내용은 [HJ-004 문서](docs/HJ-004-catalog-operations.md)를 참고한다.
+
 ## 로컬 실행
 
 [MySQL 준비](docs/MYSQL-SETUP.md)를 따라 전용 개발·테스트 스키마와 계정을 준비한다.

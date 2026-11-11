@@ -27,8 +27,10 @@ public final class TestDataCleaner {
      * Spring Session 테이블 이름은 대문자다. lower_case_table_names 설정에 따라 information_schema가 소문자로 보고할 수 있어
      * 등록 여부는 대소문자를 구분하지 않고 비교한다.
      */
-    public static final List<String> TABLES_CHILD_FIRST =
-            List.of("SPRING_SESSION_ATTRIBUTES", "SPRING_SESSION", "members", "movies");
+    public static final List<String> TABLES_CHILD_FIRST = List.of(
+            // HJ-004: inventory → 회차(→ 영화·상영관) → 좌석 → 상영관
+            "screening_seats", "screenings", "seats", "theaters",
+            "SPRING_SESSION_ATTRIBUTES", "SPRING_SESSION", "members", "movies");
 
     /** 정리 대상에서 제외하는 관리 테이블. */
     public static final Set<String> PRESERVED_TABLES = Set.of("flyway_schema_history");
