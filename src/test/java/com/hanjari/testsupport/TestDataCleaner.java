@@ -30,6 +30,8 @@ public final class TestDataCleaner {
     public static final List<String> TABLES_CHILD_FIRST = List.of(
             // HJ-004: inventory → 회차(→ 영화·상영관) → 좌석 → 상영관
             "screening_seats", "screenings", "seats", "theaters",
+            // HJ-005: 멱등 기록(→ members)
+            "idempotency_records",
             "SPRING_SESSION_ATTRIBUTES", "SPRING_SESSION", "members", "movies");
 
     /** 정리 대상에서 제외하는 관리 테이블. */
