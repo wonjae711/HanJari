@@ -230,7 +230,7 @@ class HjIdempotencyPersistenceIT {
         assertThat(snapshot()).isEqualTo(afterCreate);
 
         // 같은 operation, 같은 키, 다른 경로(대상 ID) → 409. 두 번째 대상은 바뀌지 않는다.
-        jdbcTemplate.update("UPDATE screening_seats SET state = 'HELD' WHERE screening_id = ?", s2.id);
+        markHeld(s2.id, null, memberId);
         String releaseKey = UUID.randomUUID().toString();
         Reply released = member.post(BASE + "/holds/" + s1.id + "/release", null, releaseKey);
         assertThat(released.status()).isEqualTo(200);
@@ -360,8 +360,7 @@ class HjIdempotencyPersistenceIT {
         Reply aliceRelease = alice.post(BASE + "/holds/" + forAlice.id + "/release", null, shared);
         assertThat(aliceRelease.status()).isEqualTo(200);
         assertThat(aliceRelease.header(IdempotentResponse.REPLAYED_HEADER)).isNull();
-        jdbcTemplate.update("UPDATE screening_seats SET state = 'HELD' WHERE screening_id = ? AND seat_id = ?",
-                forAlice.id, forAlice.seat(1));
+        markHeld(forAlice.id, forAlice.seat(1), aliceId);
         Reply aliceAccept = alice.post(BASE + "/holds/" + forAlice.id + "/payment-attempts", null, shared);
         assertThat(aliceAccept.status()).isEqualTo(202);
 
@@ -537,12 +536,12 @@ class HjIdempotencyPersistenceIT {
         // 자기 범위에 이미 기록이 있는 키로 타인 자원을 대상으로 해도 소유권 검사가 기록 조회·충돌 판정보다 먼저다:
         // 409 IDEMPOTENCY_CONFLICT나 재전송이 아니라 404이며, 기록·도메인·작업 실행 변화가 없다.
         Screening othersOwn = screeningWithSeats("타인 소유관", 2, otherId);
-        jdbcTemplate.update("UPDATE screening_seats SET state = 'HELD' WHERE screening_id = ?", othersOwn.id);
+        markHeld(othersOwn.id, null, otherId);
         String otherReleaseKey = UUID.randomUUID().toString();
         Reply otherReleased = other.post(BASE + "/holds/" + othersOwn.id + "/release", null, otherReleaseKey);
         assertThat(otherReleased.status()).isEqualTo(200);
         String otherToken = (String) otherReleased.json("$.token");
-        jdbcTemplate.update("UPDATE screening_seats SET state = 'HELD' WHERE screening_id = ?", othersOwn.id);
+        markHeld(othersOwn.id, null, otherId);
         String beforeCross = snapshot();
         int runsBeforeCross = hooks.domainRuns.get();
         List<Reply> crossReplies = List.of(
@@ -638,9 +637,10 @@ class HjIdempotencyPersistenceIT {
                         throw new ApiException(HttpStatus.CONFLICT, "SEAT_UNAVAILABLE", "선택할 수 없는 좌석입니다.");
                     }
                 }
+                long holdId = insertFixtureHold(jdbc, member.memberId(), screeningId);
                 for (long seatId : sorted) {
-                    jdbc.update("UPDATE screening_seats SET state = 'HELD' WHERE screening_id = ? AND seat_id = ?",
-                            screeningId, seatId);
+                    jdbc.update("UPDATE screening_seats SET state = 'HELD', hold_id = ? "
+                            + "WHERE screening_id = ? AND seat_id = ?", holdId, screeningId, seatId);
                 }
                 jdbc.update("UPDATE screenings SET sales_locked_at = COALESCE(sales_locked_at, UTC_TIMESTAMP(6)) "
                         + "WHERE id = ?", screeningId);
@@ -663,7 +663,7 @@ class HjIdempotencyPersistenceIT {
             return executor.execute(member.memberId(), key, IdempotentRequest.holdRelease(screeningId),
                     ownedBy(member.memberId(), screeningId), () -> {
                 lockOwned(member.memberId(), screeningId);
-                int released = jdbc.update("UPDATE screening_seats SET state = 'AVAILABLE' "
+                int released = jdbc.update("UPDATE screening_seats SET state = 'AVAILABLE', hold_id = NULL "
                         + "WHERE screening_id = ? AND state = 'HELD'", screeningId);
                 afterDomainWrite();
                 Map<String, Object> response = new LinkedHashMap<>();
@@ -683,7 +683,7 @@ class HjIdempotencyPersistenceIT {
             return executor.execute(member.memberId(), key, IdempotentRequest.paymentAttemptCreate(screeningId),
                     ownedBy(member.memberId(), screeningId), () -> {
                 lockOwned(member.memberId(), screeningId);
-                int booked = jdbc.update("UPDATE screening_seats SET state = 'BOOKED' "
+                int booked = jdbc.update("UPDATE screening_seats SET state = 'BOOKED', hold_id = NULL "
                         + "WHERE screening_id = ? AND state = 'HELD'", screeningId);
                 if (booked == 0) {
                     throw new ApiException(HttpStatus.CONFLICT, "NOTHING_HELD", "확보한 좌석이 없습니다.");
@@ -768,6 +768,36 @@ class HjIdempotencyPersistenceIT {
                 + "SELECT ?, theater_id, id, 'AVAILABLE' FROM seats WHERE theater_id = ?", id, theater);
         hooks.owners.put(id, ownerId);
         return new Screening(id, seatIds);
+    }
+
+    /**
+     * HJ-006부터 HELD 좌석은 같은 회차의 확보 행을 참조해야 한다(DB CHECK·FK). probe는 확보 기능이 아니라 멱등 실행기를 시험하므로,
+     * 좌석을 HELD로 표시할 때 소유 확보 fixture 행을 함께 만든다. 시각은 probe 회차 시작(2031-06-01T01:00Z) 직전 5분 창이다.
+     */
+    static long insertFixtureHold(JdbcTemplate jdbc, long memberId, long screeningId) {
+        KeyHolder keys = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO holds (member_id, screening_id, status, total_amount, expires_at, created_at) "
+                            + "VALUES (?, ?, 'ACTIVE', 0, '2031-06-01 01:00:00', '2031-06-01 00:55:00')",
+                    Statement.RETURN_GENERATED_KEYS);
+            statement.setLong(1, memberId);
+            statement.setLong(2, screeningId);
+            return statement;
+        }, keys);
+        return keys.getKey().longValue();
+    }
+
+    /** 좌석(seatId가 null이면 회차 전체)을 owner의 fixture 확보로 HELD 표시한다. */
+    private void markHeld(long screeningId, Long seatId, long ownerId) {
+        long holdId = insertFixtureHold(jdbcTemplate, ownerId, screeningId);
+        if (seatId == null) {
+            jdbcTemplate.update("UPDATE screening_seats SET state = 'HELD', hold_id = ? WHERE screening_id = ?",
+                    holdId, screeningId);
+        } else {
+            jdbcTemplate.update("UPDATE screening_seats SET state = 'HELD', hold_id = ? "
+                    + "WHERE screening_id = ? AND seat_id = ?", holdId, screeningId, seatId);
+        }
     }
 
     private String seatStates(long screeningId) {

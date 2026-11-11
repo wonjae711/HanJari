@@ -28,8 +28,10 @@ public final class TestDataCleaner {
      * 등록 여부는 대소문자를 구분하지 않고 비교한다.
      */
     public static final List<String> TABLES_CHILD_FIRST = List.of(
-            // HJ-004: inventory → 회차(→ 영화·상영관) → 좌석 → 상영관
-            "screening_seats", "screenings", "seats", "theaters",
+            // HJ-006: 확보 좌석(→ 확보·inventory). inventory(→ 확보)가 먼저 지워진 뒤 확보(→ 회원·회차)를 지운다.
+            "hold_items",
+            // HJ-004: inventory → (HJ-006 확보) → 회차(→ 영화·상영관) → 좌석 → 상영관
+            "screening_seats", "holds", "screenings", "seats", "theaters",
             // HJ-005: 멱등 기록(→ members)
             "idempotency_records",
             "SPRING_SESSION_ATTRIBUTES", "SPRING_SESSION", "members", "movies");

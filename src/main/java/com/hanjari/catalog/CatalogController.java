@@ -1,6 +1,8 @@
 package com.hanjari.catalog;
 
+import com.hanjari.auth.AuthenticatedMember;
 import com.hanjari.common.RequestValues;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import java.time.LocalDate;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,9 +47,11 @@ public class CatalogController {
         return queryService.screenings(movie, day);
     }
 
+    /** 비회원도 조회한다. 로그인한 회원이면 본인 확보 좌석(mine)과 본인 확보 만료 시각(expiresAt)을 함께 표시한다. */
     @GetMapping("/screenings/{screeningId}/seats")
-    public CatalogResponses.SeatMap seats(@PathVariable("screeningId") String screeningId) {
+    public CatalogResponses.SeatMap seats(@PathVariable("screeningId") String screeningId,
+            @AuthenticationPrincipal AuthenticatedMember viewer) {
         return queryService.seats(RequestValues.positiveId(screeningId, "INVALID_SCREENING_ID",
-                "유효하지 않은 회차 ID입니다."));
+                "유효하지 않은 회차 ID입니다."), viewer == null ? null : viewer.memberId());
     }
 }

@@ -138,11 +138,13 @@ class HjMysqlFoundationIT {
         // HJ-003(V2)부터 회원·세션 테이블이 함께 생성된다. 초기 데이터로 계정을 만들지 않는다.
         // HJ-004(V3)부터 상영관·좌석·회차·회차 좌석 테이블이 생성된다. 초기 데이터(상영관·좌석 포함)는 넣지 않는다.
         // HJ-005(V4)부터 멱등 기록 테이블이 생성된다. 초기 데이터는 없다.
+        // HJ-006(V5)부터 확보·확보 좌석 테이블이 생성된다. 초기 데이터는 없다.
         assertThat(tablesInSchema()).map(String::toLowerCase).containsExactlyInAnyOrder(
                 "flyway_schema_history", "movies", "members", "spring_session", "spring_session_attributes",
-                "theaters", "seats", "screenings", "screening_seats", "idempotency_records");
+                "theaters", "seats", "screenings", "screening_seats", "idempotency_records", "holds", "hold_items");
         assertThat(count("theaters") + count("seats") + count("screenings")).isZero();
         assertThat(count("idempotency_records")).isZero();
+        assertThat(count("holds") + count("hold_items")).isZero();
         assertThat(count("members")).isZero();
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '1' AND success = 1", Integer.class))

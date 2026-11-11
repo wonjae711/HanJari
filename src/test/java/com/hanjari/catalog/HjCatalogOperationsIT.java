@@ -251,8 +251,12 @@ class HjCatalogOperationsIT {
         long a2 = insertSeat(theater, "A", 2);
         long a1 = insertSeat(theater, "A", 1);
         long screening = insertScreening(movie, theater, "2031-04-01T01:00:00Z", 100, 15000);
-        jdbcTemplate.update("UPDATE screening_seats SET state = 'HELD' WHERE screening_id = ? AND seat_id = ?",
-                screening, a2);
+        // HJ-006부터 HELD 좌석은 소유 확보를 참조해야 한다(DB CHECK). 다른 회원의 유효 확보를 fixture로 만든다.
+        long holderId = signup("seat_holder");
+        long holdId = insert("INSERT INTO holds (member_id, screening_id, status, total_amount, expires_at, created_at) "
+                + "VALUES (?, ?, 'ACTIVE', 15000, '2031-04-01 01:00:00', '2031-04-01 00:55:00')", holderId, screening);
+        jdbcTemplate.update("UPDATE screening_seats SET state = 'HELD', hold_id = ? WHERE screening_id = ? AND seat_id = ?",
+                holdId, screening, a2);
         jdbcTemplate.update("UPDATE screening_seats SET state = 'BOOKED' WHERE screening_id = ? AND seat_id = ?",
                 screening, b1);
         long memberId = signup("seat_viewer");
@@ -279,7 +283,8 @@ class HjCatalogOperationsIT {
             Instant serverNow = Instant.parse((String) view.json("$.serverNow"));
             assertThat(serverNow).isBetween(before.minusSeconds(1), dbNow().plusSeconds(1));
             assertThat(view.body()).doesNotContain("seat_viewer").doesNotContain("memberId")
-                    .doesNotContain("holdId").doesNotContain("reservationId").doesNotContain("loginId");
+                    .doesNotContain("holdId").doesNotContain("reservationId").doesNotContain("loginId")
+                    .doesNotContain("seat_holder").doesNotContain("expiresAt");
         }
         assertThat(memberView.longs("$.seats[*].seatId")).isEqualTo(anonymousView.longs("$.seats[*].seatId"));
         assertThat(memberId).isPositive();
