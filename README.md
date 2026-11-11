@@ -21,6 +21,10 @@ Java 17 / Spring Boot 4.1.1 / Maven 3.9.11 / MySQL을 사용한다.
 
 비회원 공개 조회: `GET /api/v1/movies`, `GET /api/v1/screenings?movieId=&date=`(한국 날짜), `GET /api/v1/screenings/{id}/seats`. 운영자 전용: `POST/PATCH /api/v1/ops/movies`, `POST/PATCH/DELETE /api/v1/ops/screenings`. `dev` 프로필은 합성 영화·상영관·좌석을 멱등 적용하며 계정은 만들지 않는다. 자세한 내용은 [HJ-004 문서](docs/HJ-004-catalog-operations.md)를 참고한다.
 
+### 변경 요청 멱등성 (HJ-005)
+
+확보 생성·해제·결제 접수·전체 취소는 UUID `Idempotency-Key` 헤더를 받는다(기록 범위: 회원+operation+키). 같은 키·같은 내용(좌석 순서 무관)은 원래 응답을 그대로 반환하고, 다른 경로·본문은 409 `IDEMPOTENCY_CONFLICT`다. 도메인 변경과 기록은 함께 커밋·롤백된다. 해당 엔드포인트는 후속 업무에서 추가된다. 자세한 내용은 [HJ-005 문서](docs/HJ-005-idempotency.md)를 참고한다.
+
 ## 로컬 실행
 
 [MySQL 준비](docs/MYSQL-SETUP.md)를 따라 전용 개발·테스트 스키마와 계정을 준비한다.
