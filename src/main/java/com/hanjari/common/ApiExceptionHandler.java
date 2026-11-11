@@ -29,6 +29,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     private static final String AUTH_PACKAGE = "com.hanjari.auth";
     private static final String CATALOG_PACKAGE = "com.hanjari.catalog";
     private static final String OPERATIONS_PACKAGE = "com.hanjari.operations";
+    private static final String HOLD_PACKAGE = "com.hanjari.hold";
 
     @ExceptionHandler(InvalidMovieIdException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidMovieId(InvalidMovieIdException ex) {
@@ -70,8 +71,9 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             AuthFailurePolicy.record(outcome, "HANDLER");
             return error(outcome.status(), outcome.code(), outcome.message());
         }
-        if (handledByPackage(request, CATALOG_PACKAGE) || handledByPackage(request, OPERATIONS_PACKAGE)) {
-            // HJ-004 공개 조회·운영 API: 일시적 DB 장애(데드락·잠금 대기 초과 등)는 전체 롤백 후 503, 그 밖은 500.
+        if (handledByPackage(request, CATALOG_PACKAGE) || handledByPackage(request, OPERATIONS_PACKAGE)
+                || handledByPackage(request, HOLD_PACKAGE)) {
+            // HJ-004 공개 조회·운영 API, HJ-006 확보 API: 일시적 DB 장애(데드락·잠금 대기 초과 등)는 전체 롤백 후 503, 그 밖은 500.
             // 로그에는 고정 이벤트만 남기고 예외 객체·메시지·SQL·요청 값을 넘기지 않는다.
             AuthFailurePolicy.Outcome outcome = AuthFailurePolicy.classify(ex);
             log.warn("event=CATALOG_REQUEST_FAILED category={} status={}", outcome.category(),

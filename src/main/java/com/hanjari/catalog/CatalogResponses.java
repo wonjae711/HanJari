@@ -1,5 +1,6 @@
 package com.hanjari.catalog;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.hanjari.movie.MovieDetailResponse;
 import java.util.List;
 
@@ -24,13 +25,14 @@ public final class CatalogResponses {
     }
 
     /**
-     * 좌석 하나. status는 AVAILABLE/HELD/BOOKED, mine은 요청자 본인의 확보 여부다.
-     * 확보 기능(HJ-005) 이전에는 본인 확보가 존재하지 않으므로 항상 false다.
+     * 좌석 하나. status는 AVAILABLE/HELD/BOOKED, mine은 로그인한 요청자 본인의 유효 확보 좌석인지다(비회원은 항상 false).
+     * 만료 시각이 지난 확보 좌석은 작업자 반영 전이라도 AVAILABLE로 보인다(HJ-006).
      */
     public record SeatView(long seatId, String row, int number, String status, boolean mine) {
     }
 
-    /** 본인 확보 만료 시각(expiresAt)은 본인 확보가 있을 때만 추가한다(HJ-005). */
-    public record SeatMap(long screeningId, String serverNow, List<SeatView> seats) {
+    /** 본인 확보 만료 시각(expiresAt)은 이 회차에 본인의 유효 확보가 있을 때만 응답에 넣는다(HJ-006). */
+    public record SeatMap(long screeningId, String serverNow, List<SeatView> seats,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String expiresAt) {
     }
 }

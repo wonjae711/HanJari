@@ -259,7 +259,9 @@ class HjCatalogScreeningPolicyTest {
     void publicResponsesCarryNoMemberHoldOrReservationIdentifiers() {
         assertThat(componentNames(CatalogResponses.SeatView.class))
                 .containsExactly("seatId", "row", "number", "status", "mine");
-        assertThat(componentNames(CatalogResponses.SeatMap.class)).containsExactly("screeningId", "serverNow", "seats");
+        // HJ-006: 본인 유효 확보 만료 시각(expiresAt)만 추가된다(값이 없으면 응답에서 생략). 식별자는 여전히 없다.
+        assertThat(componentNames(CatalogResponses.SeatMap.class))
+                .containsExactly("screeningId", "serverNow", "seats", "expiresAt");
         assertThat(componentNames(CatalogResponses.ScreeningSummary.class)).containsExactly("id", "movieId",
                 "theaterId", "theaterName", "startsAt", "endsAt", "basePrice", "bookable");
         assertThat(componentNames(CatalogResponses.MoviePage.class)).containsExactly("items", "page", "size", "hasNext");

@@ -30,6 +30,11 @@ server:
 hanjari:
   security:
     allowed-origins: http://localhost:8080
+  # HJ-006: 만료 확보 정리 작업자. 정합성은 작업자에 의존하지 않는다(확보·해제·조회가 만료를 다시 판정한다).
+  holds:
+    expiry-worker:
+      enabled: true
+      interval-ms: 1000
 
 logging:
   level:
